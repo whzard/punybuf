@@ -1,0 +1,57 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Punybuf Definition",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#docs"
+		},
+		{
+			"include": "#comments"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"name": "keyword.control.pbd",
+			"begin": "include",
+			"end": "\n",
+			"patterns": [{
+				"name": "string.filepath.pbd",
+				"match": ".*"
+			}]
+		},
+		"docs": {
+			"name": "meta.embedded.block.markdown",
+			"begin": "#\\[",
+			"end": "\\]",
+			"beginCaptures": {
+				"0": {
+					"name": "comment.documentation.open.pbd"
+				}
+			},
+			"endCaptures": {
+				"0": {
+					"name": "comment.documentation.close.pbd"
+				}
+			},
+			"patterns": [
+				{
+					"include": "text.html.markdown"
+				},
+				{
+					"begin": "\\[",
+					"end": "\\]"
+				}
+			]
+		},
+		"comments": {
+			"name": "comment.pbd",
+			"begin": "#",
+			"end": "\n",
+			"patterns": []
+		}
+	},
+	"scopeName": "source.pbd"
+}

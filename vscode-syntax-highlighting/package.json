@@ -1,0 +1,28 @@
+{
+  "name": "pbd",
+  "displayName": "pbd",
+  "description": "Syntax highlighting for Punybuf Definition files",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "pbd",
+      "aliases": ["Punybuf Definition", "pbd"],
+      "extensions": [".pbd"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "pbd",
+      "scopeName": "source.pbd",
+      "path": "./syntaxes/pbd.tmLanguage.json",
+      "embeddedLanguages": {
+        "meta.embedded.block.markdown": "markdown"
+      }
+    }]
+  }
+}

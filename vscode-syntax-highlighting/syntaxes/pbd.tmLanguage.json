@@ -1,0 +1,408 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Punybuf Definition",
+	"patterns": [
+		{
+			"include": "#include"
+		},
+		{
+			"include": "#layer"
+		},
+		{
+			"include": "#default"
+		},
+		{
+			"include": "#aliases"
+		},
+		{
+			"include": "#types"
+		},
+		{
+			"include": "#def-struct"
+		},
+		{
+			"include": "#def-enum"
+		},
+		{
+			"include": "#def-structenum"
+		},
+		{
+			"include": "#commands"
+		},
+		{
+			"include": "#command-return"
+		},
+		{
+			"include": "#command-error"
+		},
+		{
+			"include": "#reference"
+		}
+	],
+	"repository": {
+		"default": {
+			"patterns": [
+				{
+					"include": "#docs"
+				},
+				{
+					"include": "#attributes"
+				},
+				{
+					"include": "#comments"
+				}
+			]
+		},
+		"include": {
+			"name": "keyword.control.pbd",
+			"begin": "include",
+			"end": "\n",
+			"patterns": [{
+				"name": "string.filepath.pbd",
+				"match": ".+"
+			}]
+		},
+		"layer": {
+			"name": "keyword.control.pbd",
+			"begin": "layer",
+			"end": ":",
+			"patterns": [{
+				"name": "constant.numeric.layer.pbd",
+				"match": ".+?"
+			}]
+		},
+		"docs": {
+			"name": "comment.documentation.pbd",
+			"begin": "#\\[",
+			"end": "\\]",
+			"beginCaptures": {
+				"0": {
+					"name": "comment.documentation.open.pbd"
+				}
+			},
+			"endCaptures": {
+				"0": {
+					"name": "comment.documentation.close.pbd"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#docs-nested"
+				}
+			]
+		},
+		"docs-nested": {
+			"begin": "\\[",
+			"end": "\\]",
+			"patterns": [
+				{
+					"include": "#docs-nested"
+				}
+			]
+		},
+		"attributes": {
+			"name": "attribute.pbd",
+			"begin": "@",
+			"end": "\\s",
+			"patterns": [
+				{
+					"name": "punctuation.definition.block.pbd",
+					"begin": "\\(",
+					"end": "\\)",
+					"patterns": [
+						{
+							"include": "#attr-match-parens"
+						},
+						{
+							"name": "string.attr.pbd",
+							"match": ".+?"
+						}
+					]
+				},
+				{
+					"name": "storage.type.annotation.pbd",
+					"match": "[^\\(\\)]+?"
+				}
+			]
+		},
+		"attr-match-parens": {
+			"name": "string.attr.pbd",
+			"begin": "\\(",
+			"end": "\\)",
+			"patterns": [
+				{
+					"include": "attr-match-parens"
+				},
+				{
+					"name": "string.attr.pbd",
+					"match": "[^\\(\\)]+?"
+				}
+			]
+		},
+		"comments": {
+			"name": "comment.pbd",
+			"begin": "#",
+			"end": "\n"
+		},
+		"types": {
+			"name": "typedecl.pbd",
+			"comment": "Listen. I'm tired. This language is AWFULly lax so idc. use regex101 or sth",
+			"match": "(\\w+)\\s*((<)(((\\w+)(,?\\s*))*)(>))?\\s*(=)",
+			"captures": {
+				"1": {
+					"name": "entity.name.type.alias.pbd"
+				},
+				"3": {
+					"name": "punctuation.definition.block.pbd"
+				},
+				"4": {
+					"name": "entity.name.type.alias.pbd"
+				},
+				"5": {
+					"name": "punctuation.definition.block.pbd"
+				},
+				"9": {
+					"name": "keyword.operator.declaration.pbd"
+				}
+			}
+		},
+		"aliases": {
+			"name": "typedecl.alias.pbd",
+			"begin": "(\\w+)\\s*((<)(((\\w+)(,?\\s*))*)(>))?\\s*(=)",
+			"beginCaptures": {
+				"1": {
+					"name": "entity.name.type.alias.pbd"
+				},
+				"3": {
+					"name": "punctuation.definition.block.pbd"
+				},
+				"4": {
+					"name": "entity.name.type.alias.pbd"
+				},
+				"5": {
+					"name": "punctuation.definition.block.pbd"
+				},
+				"9": {
+					"name": "keyword.operator.declaration.pbd"
+				}
+			},
+			"end": "\\n",
+			"patterns": [
+				{
+					"include": "#reference"
+				},
+				{
+					"include": "#default"
+				}
+			]
+		},
+		"commands": {
+			"name": "cmddecl.pbd",
+			"match": "(\\w+)(\\s*:)\\s*",
+			"captures": {
+				"1": {
+					"name": "entity.name.function.command.pbd"
+				},
+				"2": {
+					"name": "keyword.operator.declaration.pbd"
+				}
+			}
+		},
+		"def-struct": {
+			"name": "structdef.pbd",
+			"begin": "{",
+			"beginCaptures": {
+				"0": { "name": "punctuation.definition.block.pbd" }
+			},
+			"end": "}",
+			"endCaptures": {
+				"0": { "name": "punctuation.definition.block.pbd" }
+			},
+			"patterns": [
+				{
+					"include": "#struct-fields"
+				},
+				{
+					"include": "#default"
+				}
+			]
+		},
+		"def-enum": {
+			"name": "enumdef.pbd",
+			"begin": "\\[",
+			"beginCaptures": {
+				"0": {
+					"name": "punctuation.definition.block.pbd"
+				}
+			},
+			"end": "\\]",
+			"endCaptures": {
+				"0": {
+					"name": "punctuation.definition.block.pbd"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#enum-fields"
+				},
+				{
+					"include": "#default"
+				}
+			]
+		},
+		"def-structenum": {
+			"name": "structenumdef.pbd",
+			"begin": "\\(",
+			"beginCaptures": {
+				"0": { "name": "punctuation.definition.block.pbd" }
+			},
+			"end": "\\)",
+			"endCaptures": {
+				"0": { "name": "punctuation.definition.block.pbd" }
+			},
+			"patterns": [
+				{
+					"include": "#reference"
+				},
+				{
+					"name": "punctuation.separator.comma.pbd",
+					"match": ","
+				},
+				{
+					"include": "#default"
+				}
+			]
+		},
+		"struct-fields": {
+			"name": "structfielddef.pbd",
+			"begin": "(\\w+)\\s*((\\??\\s*(:))\\s*|\\?)",
+			"beginCaptures": {
+				"1": { "name": "support.property-value.pbd" },
+				"2": { "name": "keyword.operator.definition.pbd" }
+			},
+			"end": "(\\n|(?=\\}))",
+			"patterns": [
+				{
+					"include": "#reference"
+				},
+				{
+					"name": "punctuation.separator.flags.pbd",
+					"match": "\\."
+				},
+				{
+					"include": "#default"
+				}
+			]
+		},
+		"enum-fields": {
+			"name": "enumfielddef.pbd",
+			"begin": "(\\w+)\\s*(:\\s*)?",
+			"beginCaptures": {
+				"1": { "name": "variable.other.enummember" },
+				"2": { "name": "keyword.operator.definition.pbd" }
+			},
+			"end": "(\\,|(?=\\]))",
+			"patterns": [
+				{
+					"include": "#reference"
+				},
+				{
+					"include": "#default"
+				}
+			]
+		},
+		"command-return": {
+			"name": "cmdreturn.pbd",
+			"begin": "->\\s*",
+			"beginCaptures": {
+				"0": { "name": "keyword.operator.return.pbd" }
+			},
+			"end": "\\n|(?=\\!)",
+			"patterns": [
+				{
+					"include": "#reference"
+				},
+				{
+					"include": "#default"
+				}
+			]
+		},
+		"command-error": {
+			"name": "cmdthrows.pbd",
+			"begin": "(!)",
+			"beginCaptures": {
+				"0": { "name": "keyword.operator.throws.pbd" }
+			},
+			"end": "\\n",
+			"patterns": [
+				{
+					"include": "#def-enum"
+				},
+				{
+					"include": "#def-structenum"
+				},
+				{
+					"include": "#default"
+				}
+			]
+		},
+		"reference": {
+			"patterns": [
+				{
+					"include": "#ref-inline"
+				},
+				{
+					"include": "#ref-generic"
+				},
+				{
+					"include": "#ref-plain"
+				}
+			]
+		},
+		"ref-plain": {
+			"name": "entity.name.type.alias.pbd",
+			"match": "\\w+"
+		},
+		"ref-generic": {
+			"name": "generic.pbd",
+			"begin": "(\\w+)\\s*(<)",
+			"beginCaptures": {
+				"1": { "name": "entity.name.type.alias.pbd" },
+				"2": { "name": "punctuation.definition.block.pbd" }
+			},
+			"end": ">",
+			"endCaptures": {
+				"0": { "name": "punctuation.definition.block.pbd" }
+			},
+			"patterns": [
+				{
+					"include": "#reference"
+				},
+				{
+					"name": "punctuation.separator.comma.pbd",
+					"match": ","
+				},
+				{
+					"include": "#default"
+				}
+			]
+		},
+		"ref-inline": {
+			"patterns": [
+				{
+					"include": "#ref-plain"
+				},
+				{
+					"include": "#def-struct"
+				},
+				{
+					"include": "#def-enum"
+				},
+				{
+					"include": "#def-structenum"
+				}
+			]
+		}
+	},
+	"scopeName": "source.pbd"
+}

@@ -1,0 +1,17 @@
+[package]
+name = "punybuf_common"
+description = "A crate for the common Punybuf types."
+repository = "https://github.com/whzard/punybuf"
+categories = ["encoding"]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1.45.0", optional = true, features = ["io-util"] }
+
+[features]
+default = ["tokio"]
+
+[dev-dependencies]
+tokio = { version = "1.45.0", features = ["io-util", "rt", "macros", "net", "sync"] }

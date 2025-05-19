@@ -1,0 +1,187 @@
+# This is the common file, containing types supported by every implementation.
+# You may choose not to include it, and will then be responsible for defining
+# all these (or other) types yourself.
+
+#[
+	This type is only valid as a return type.
+
+	When a command is meant to "return" `Void`, that means that once this command
+	is sent, the sender will get no acknowledgement that it was recieved. `Void`
+	commands cannot return errors either, but the sender's counter must be anyway
+	incremented and all other features of the protocol function as usual.
+
+	Note that the underlying protocol usually acknowledges the packets itself, so
+	once this command is sent, it's safe to say that it will be recieved.
+
+	This type is represented here as an empty value-enum, which is valid, but cannot
+	be constructed, becasue it has 0 variants. It's marked `@builtin` so it
+	doesn't matter, but that's why it looks so weird.
+]
+@builtin
+@void
+Void = ()
+
+#[
+	An unsigned 8-bit (1 byte) integer
+]
+@builtin
+@flags(8)
+U8 = U8
+
+#[
+	An unsigned 16-bit (2 bytes) integer, in **big endian**
+]
+@builtin
+@flags(16)
+U16 = U16
+
+#[
+	An unsigned 32-bit (4 bytes) integer, in **big endian**
+]
+@builtin
+@flags(32)
+U32 = U32
+
+#[
+	An unsigned 64-bit (8 bytes) integer, in **big endian**
+]
+@builtin
+@flags(64)
+U64 = U64
+
+#[
+	A signed 32-bit (4 bytes) integer, in **big endian**.
+]
+@builtin
+I32 = I32
+
+#[
+	A signed 64-bit (8 bytes) integer, in **big endian**.
+]
+@builtin
+I64 = I64
+
+#[
+	A 32-bit (4 bytes) IEEE 754 floating-point number, in **big endian**.
+]
+@builtin
+F32 = F32
+
+#[
+	A 64-bit (8 bytes) IEEE 754 floating-point number, in **big endian**.
+]
+@builtin
+F64 = F64
+
+#[
+	A variable-length integer. The greatest supported value is 1152921573328437375.
+
+	Decoded as follows:
+	```
+	0xxxxxxx
+	10xxxxxx xxxxxxxx + 128
+	110xxxxx xxxxxxxx xxxxxxxx + 16512
+	1110xxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx + 2113664
+	1111xxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx + 68721590400
+	```
+	The first bits (length bits) of the first octet represent the amount of octets needed
+	for the whole number, as defined by the figure above.
+
+	If we stopped there, there would be multiple ways of representing small numbers, e.g.
+	`52` could be both written as `00110100` and `10000000 00110100`. To prevent this and
+	to also pack more numbers per byte, punybuf's varints pack additional information into
+	the length bits: since the largest possible number that we can represent with 1 octet
+	is `01111111 = 127`, the smallest possible number we are able to represent with 2 octets
+	shall be `128`, represented as `10000000 00000000`. Therefore, if a varint takes 2 octets,
+	we must add `128` to it, and so on, and so forth.
+]
+@builtin
+@flags(60)
+UInt = UInt
+
+#[
+	A contigous array of `T`. Consists of a [`UInt`](UInt), which indicates its size,
+	and the elements laid out immediately after it.
+
+	Reading an array works like this:
+	- `len = UInt.deserialize()`
+	- `for 0..len { T.deserialize() }`
+
+	Arrays with 0 elements are valid.
+]
+@builtin
+Array<T> = Array<T>
+
+#[
+	Arbitrary bytes.
+
+	This type is marked `@builtin` because it's faster to, instead of reading each `U8`
+	individually, read all of them from the stream as soon as the length becomes
+	available. In practice, you may implement this type as a literal `Array<U8>`.
+]
+@builtin
+Bytes = Array<U8>
+
+#[
+	A UTF-8 encoded string. Note that the length of the underlying "`Array`" does
+	not correspond to the length of the string (in characters),
+	since UTF-8 is a variable-length encoding, instead it represents the length in
+	bytes.
+
+	This type may be treated as a literal `Bytes` type, except it also SHOULD be
+	valid UTF-8. During deserialization, all invalid code bytes or code points
+	MUST be replaced with the unicode replacement character and deserialization
+	MUST NOT fail.
+]
+@builtin
+String = Bytes
+
+#[
+	A map type. This isn't marked `@builtin`, but implementations may, for their
+	own convinience, allow to convert this type to their own `HashMap`
+	implementation. This conversion may fail, as this type enforces no rules
+	on the uniquness of the keys.
+
+	In the case that one of the keys is not unique, the implementation SHOULD NOT
+	reject a frame or fail the deserialization completely, but should react to this error
+	in some other way, like telling the user or throwing a more specific error.
+]
+@map_convertible
+Map<K, V> = Array<KeyPair<K, V>>
+
+@sealed
+KeyPair<K, V> = {
+	key: K
+	value: V
+}
+
+#[
+	An empty type, used as a return type for a command that doesn't need to return
+	anything, but needs to indicate that it's been recieved or that the requested
+	operation finished processing.
+
+	Note that this is very different from the [`Void`](Void) type that means that
+	the reciever will never return any acknoledgement to the sender.
+]
+@sealed
+Done = {}
+
+#[
+	A boolean value.
+
+	In practice, you should prefer using flag fields instead of this type.
+]
+Boolean = [
+	True, False
+]
+
+#[
+	Means that `T` may or may not be present.
+
+	In practice this type is rarely used, as flag fields are always preferred (they
+	save space).
+]
+Optional<T> = [
+	None,
+	Some: T
+]
