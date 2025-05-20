@@ -151,13 +151,13 @@ Commands are especially nice for bidirectional communication. Punybuf is not opi
 ```pbd
 sayHello: { name: String } -> String
 ```
-This command takes a struct-like argument. In practice, you "construct" this command like you would a struct, serialize it and send it. After the `->` we have a **return type**. When the command is done being processed by the remote peer, it send you back a special return frame, containing, in our case, a `String`.
+This command takes a struct-like argument. In practice, you "construct" this command like you would a struct, serialize it and send it. After the `->` we have a **return type**. When the command is done being processed by the remote peer, it sends you back a special return frame, containing, in our case, a `String`.
 
 Some commands may fail. Actually, all commands may fail. But some can fail in predictable ways:
 ```pbd
 sayHelloToAnyoneButJoe: { name: String } -> String ![InvalidName]
 ```
-The bit after the `!` is exactly what it looks like, an enum! This enum represents the errors that might You can put associated values and use value-enums and all other fancy things, except that unlike usual enums that begin with `0`, *error-enums* begin with `1`. That's because all commands may fail, and the value `0` is reserved for an unexpected error with a string argument. You can think of all enums as being expanded from `![MyError]` to `![UnexpectedError: String, MyError]`.
+The bit after the `!` is exactly what it looks like, an enum! This enum represents the errors that might happen during the execution of the command. You can put associated values and use value-enums and all other fancy things, except that unlike usual enums that begin with `0`, *error-enums* begin with `1`. That's because all commands may fail, and the value `0` is reserved for an unexpected error with a string argument. You can think of all enums as being expanded from `![MyError]` to `![UnexpectedError: String, MyError]`.
 
 Commands may also take no argument, or a single type:
 ```pbd
@@ -194,3 +194,5 @@ User = {
 	}
 }
 ```
+
+**TODO: enum extensions, additional struct extensions, layers**
