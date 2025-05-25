@@ -759,6 +759,8 @@ impl<'d> PunybufValidator<'d> {
 	/// re-declarations, references to inline declarations, and stuff like that
 	/// 
 	/// Known issue: does not catch self-referential types.
+	/// Known issue: does not catch things in lower layers referencing types in higher layers.
+	// TODO: ^^^
 	pub fn validate(&mut self) -> Result<(), PunybufError> {
 		let mut declared_things: Vec<(&String, &u32, &Span, ThingKind)> = vec![];
 		for tp in &self.definition.types {

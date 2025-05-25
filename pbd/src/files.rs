@@ -1,8 +1,8 @@
-use std::{cell::RefCell, env, fs::read_to_string, io, path::Path, rc::Rc};
+use std::{env, fs::read_to_string, io, path::Path, rc::Rc};
 
 use crate::{
-	errors::{ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError, YELLOW, BOLD, NORMAL},
-	lexer::{Lexer, Loc, Span},
+	errors::{ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError, BOLD, NORMAL, YELLOW},
+	lexer::{IncludeHandler, Lexer, Loc, Span, Token},
 	pb_err
 };
 
@@ -11,32 +11,52 @@ const COMMON: &str = include_str!("../baked/common.pbd");
 fn io_err(error: &str) -> io::Error {
 	io::Error::other(error)
 }
-
-pub fn lexer_from_file<'a>(file: &'a Path) -> Result<Lexer<'a>, io::Error> {
-	lexer_from_file_internal(file, &mut Rc::new(RefCell::new(vec![
-		(file.to_str().ok_or(io_err("Invalid UTF-8"))?.to_string(), Span::impossible())
-	])))
+/// Returns `(output_tokens, includes_common)`
+// I don't particularly like the lexer being destroyed here, so perhaps Rc<RefCell> wasn't that bad.
+// If it ever causes problems, look at fe8a47f.
+pub fn tokens_from_file<'a>(file: &'a Path) -> Result<Result<(Vec<Token>, bool), PunybufError>, io::Error> {
+	let mut a = FileIncludeHandler {
+		root_path: file.parent().ok_or(io::Error::other("cannot find parent directory of a file"))?.into(),
+		included: vec![
+			(file.to_str().ok_or(io_err("Invalid UTF-8"))?.to_string(), Span::impossible())
+		]
+	};
+	let mut l = lexer_from_file(file, &mut a).map(|x| Box::new(x))?;
+	Ok(l.lex().map(|tokens| (tokens, l.includes_common)))
 }
-fn lexer_from_file_internal<'a>(file: &'a Path, included: &mut Rc<RefCell<Vec<(String, Span)>>>) -> Result<Lexer<'a>, io::Error> {
-	let mut included = included.clone();
-
-	let parent = file.parent().ok_or(io_err("Invalid include path"))?;
+fn lexer_from_file<'a>(file: &'a Path, include_handler: &'a mut FileIncludeHandler) -> Result<Lexer<'a, FileIncludeHandler>, io::Error> {
 	let content = read_to_string(&file)?;
 
 	let f_str = file.to_str().ok_or(io_err("Invalid UTF-8"))?;
 
-	Ok(Lexer::new(content, f_str, Box::new(move |inlcude_file_name, include_span| {
-		if inlcude_file_name == "common" {
-			if included.borrow().iter().find(|(i, _)| i == "common").is_some() {
+	Ok(Lexer::new(content, f_str, include_handler))
+}
+
+pub struct IncludeDisallowed;
+impl IncludeHandler for IncludeDisallowed {
+	fn handle_include(&mut self, _: String, include_span: Span) -> Result<Vec<Token>, PunybufError> {
+		Err(pb_err!(include_span, "include is not allowed here".to_string(), ExtendedErrorExplanation::empty()))
+	}
+}
+
+struct FileIncludeHandler {
+	root_path: Box<Path>,
+	included: Vec<(String, Span)>
+}
+
+impl IncludeHandler for FileIncludeHandler {
+	fn handle_include(&mut self, include_path: String, include_span: Span) -> Result<Vec<Token>, PunybufError> {
+		if include_path == "common" {
+			if self.included.iter().find(|(i, _)| i == "common").is_some() {
+				// Including common multiple times is okay
 				return Ok(vec![]);
 			}
-			included.borrow_mut().push((inlcude_file_name, include_span.clone()));
-			let mut l = Lexer::new(COMMON.to_string(), "<common>", Box::new(|_, _| {
-				Err(pb_err!(include_span, "<common> cannot include".to_string(), ExtendedErrorExplanation::empty()))
-			}));
+			self.included.push((include_path, include_span.clone()));
+			let mut rust_is_funny = IncludeDisallowed;
+			let mut l = Lexer::new(COMMON.to_string(), "<common>", &mut rust_is_funny);
 			return l.lex();
 		}
-		let real_path = parent.join(Path::new(&inlcude_file_name));
+		let real_path = self.root_path.join(Path::new(&include_path));
 
 		// unwrapping is fine since this path is from joining two
 		// valid utf-8 paths.
@@ -48,7 +68,7 @@ fn lexer_from_file_internal<'a>(file: &'a Path, included: &mut Rc<RefCell<Vec<(S
 		// included. This makes our includes less powerful than in, say, C,
 		// but that's because we don't have defines and stuff and also
 		// you shouldn't create libraries of pbd's lol
-		for (i_path, i_span) in included.borrow().iter() {
+		for (i_path, i_span) in self.included.iter() {
 			if *i_path != rp_string {
 				continue;
 			}
@@ -60,7 +80,7 @@ fn lexer_from_file_internal<'a>(file: &'a Path, included: &mut Rc<RefCell<Vec<(S
 			};
 
 			let expl = if *i_span == Span::impossible() {
-				let command_start = format!("$ {} \"", env::args().next().unwrap_or("punybuf".to_string()));
+				let command_start = format!("$ {} \"", env::args().next().unwrap_or("pbd".to_string()));
 				vec![
 					InfoExplanation {
 						span: Span {
@@ -94,9 +114,9 @@ fn lexer_from_file_internal<'a>(file: &'a Path, included: &mut Rc<RefCell<Vec<(S
 			return Ok(vec![]);
 		}
 
-		included.borrow_mut().push((rp_string, include_span.clone()));
+		self.included.push((rp_string, include_span.clone()));
 
-		let mut l = lexer_from_file_internal(&real_path, &mut included).map_err(|err| {
+		let mut l = lexer_from_file(&real_path, self).map_err(|err| {
 			pb_err!(
 				include_span,
 				format!("I/O error while including \"{rp_str}\": {err}"),
@@ -117,7 +137,7 @@ fn lexer_from_file_internal<'a>(file: &'a Path, included: &mut Rc<RefCell<Vec<(S
 						// This only applies to lexer errors, which is very limited
 						// in scope, but it's not really that useful anyway...
 						expl.after_error.push(InfoExplanation {
-							content: format!("...\"{inlcude_file_name}\" gets included here"),
+							content: format!("...\"{include_path}\" gets included here"),
 							span: include_span.clone(),
 							level: InfoLevel::Info
 						});
@@ -128,5 +148,6 @@ fn lexer_from_file_internal<'a>(file: &'a Path, included: &mut Rc<RefCell<Vec<(S
 				Err(error)
 			}
 		}
-	})))
+	
+	}
 }
