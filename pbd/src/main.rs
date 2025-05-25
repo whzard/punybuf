@@ -62,16 +62,17 @@ fn main() {
 
 	verboseln!("File: {file}");
 	let result = (|| -> Result<(), String> {
-		let mut l = files::lexer_from_file(Path::new(file)).map_err(|e| e.to_string())?;
+		let (tokens, includes_common) = files::tokens_from_file(Path::new(file))
+			.map_err(|e| e.to_string())?
+			.map_err(|e| e.to_string())?;
 
-		let tokens: Vec<Token> = l.lex().map_err(|e| e.to_string())?;
 		verboseln!("Tokens: {:?}", tokens);
 
 		let mut p = Parser::new(&tokens);
 		let decls = p.parse().map_err(|e| e.to_string())?;
 		verboseln!("Decls: {:?}", decls);
 
-		let mut def: PunybufDefinition = flatten(decls, l.includes_common).map_err(|e| e.to_string())?;
+		let mut def: PunybufDefinition = flatten(decls, includes_common).map_err(|e| e.to_string())?;
 		verboseln!("Definition: {:?}", def);
 		def.validate().map_err(|e| e.to_string())?;
 

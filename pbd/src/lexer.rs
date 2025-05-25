@@ -184,25 +184,27 @@ impl Display for Token {
 	}
 }
 
-type IncludeFn<'a> = dyn FnMut(String, Span) -> Result<Vec<Token>, PunybufError> + 'a;
+pub trait IncludeHandler {
+	fn handle_include(&mut self, include_path: String, include_span: Span) -> Result<Vec<Token>, PunybufError>;
+}
 
-pub struct Lexer<'a> {
+pub struct Lexer<'a, I> {
 	pub contents: Rc<String>,
 	pub file_name: &'a str,
 	pub current_loc: Loc,
-	pub include_fn: Box<IncludeFn<'a>>,
+	pub include_handler: &'a mut I,
 	pub includes_common: bool,
 }
 
-impl<'a> Lexer<'a> {
-	pub fn new(contents: String, file_name: &'a str, include_fn: Box<IncludeFn<'a>>) -> Self {
+impl<'a, I: IncludeHandler> Lexer<'a, I> {
+	pub fn new(contents: String, file_name: &'a str, include_handler: &'a mut I) -> Self {
 		let rc = Rc::new(contents);
 
 		Self {
 			file_name,
 			contents: rc,
 			current_loc: Loc::zero(),
-			include_fn,
+			include_handler,
 			includes_common: false,
 		}
 	}
@@ -474,7 +476,11 @@ impl<'a> Lexer<'a> {
 								}
 
 								self.current_loc = loc_end.clone();
-								let mut included_tokens = (self.include_fn)(path, Span {
+								/* let mut included_tokens = (self.include_fn)(path, Span {
+									loc_start, loc_end, file_name: self.file_name.to_string(),
+									file_contents: self.contents.clone()
+								})?; */
+								let mut included_tokens = self.include_handler.handle_include(path, Span {
 									loc_start, loc_end, file_name: self.file_name.to_string(),
 									file_contents: self.contents.clone()
 								})?;
