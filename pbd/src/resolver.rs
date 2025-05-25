@@ -318,8 +318,14 @@ impl LayerResolver {
 		if !refr.is_global || refr.reference == "Void" {
 			return None;
 		}
+
+		// TODO: Known issue: if something from a lower layer is "referring" to a higher one,
+		// this doesn't get caught by the validator since it's unaware of references, and
+		// obviously doesn't work here since we need to get the highest layer before something, panic ensues.
+		// Should this be caught by the validator or should this function have its signature changed,
+		// along with the parent one?
 		let with_correct_layer = Self::get_highest_layer(&*definition, &refr.reference, parent_layer)
-			.expect("can't find highest layer, reference not resolved"); // trust the validator + resolver
+			.expect("can't find highest layer, reference not resolved"); // trust the validator + resolver (misplaced the trust here)
 
 		if let TypeOrCmdDef::TypeDef(tp) = with_correct_layer {
 			if tp.get_attrs().contains_key("@resolve") && self.should_resolve_aliases {
