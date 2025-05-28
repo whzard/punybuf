@@ -67,6 +67,14 @@ impl Span {
 			file_contents: Rc::new("".to_string())
 		}
 	}
+	pub fn implicit_layer_definition() -> Self {
+		Self {
+			loc_start: Loc::zero(),
+			loc_end: Loc::zero(),
+			file_name: "<implicit layer definition>".to_string(),
+			file_contents: Rc::new("".to_string())
+		}
+	}
 	pub fn full_line(all: &str, file_name: String) -> Self {
 		Self {
 			loc_start: Loc::zero(),
@@ -217,6 +225,22 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 
 		self.lex_internal(&mut tokens, &mut peekable, None)?;
 
+		// Implicit `layer 0:` in case this file is included
+		// (this prevents accidental "time-travel" when a type
+		// from a lower layer references a type from a higher layer)
+		tokens.push(Token {
+			data: TokenData::LayerKeyword,
+			span: Span::implicit_layer_definition()
+		});
+		tokens.push(Token {
+			data: TokenData::Numeric(0),
+			span: Span::implicit_layer_definition()
+		});
+		tokens.push(Token {
+			data: TokenData::Colon,
+			span: Span::implicit_layer_definition()
+		});
+
 		return Ok(tokens);
 	}
 	pub fn token(&self, data: TokenData) -> Token {
@@ -243,7 +267,11 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 			explanation: Some(ExtendedErrorExplanation::empty())
 		}
 	}
-	fn lex_internal(&mut self, tokens: &mut Vec<Token>, peekable: &mut Peekable<Chars<'_>>, stop_on: Option<char>) -> Result<bool, PunybufError> {
+	fn lex_internal<Iter>(
+		&mut self, tokens: &mut Vec<Token>, peekable: &mut Peekable<Iter>, stop_on: Option<char>
+	) -> Result<bool, PunybufError>
+		where Iter: Iterator<Item = char>
+	{
 		while let Some(ch) = peekable.next() {
 			match ch {
 				'#' => {
