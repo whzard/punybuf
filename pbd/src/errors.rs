@@ -111,7 +111,7 @@ impl InfoExplanation {
 {BLUE}--> {GRAY}{}:{}:{}
 {BLUE}    |
 {: >3} | {NORMAL}{}
-{BLUE}    | {}{color}{} {}{NORMAL}\
+{BLUE}    | {}{BOLD}{color}{}{NORMAL}{color} {}{NORMAL}\
 ",
 			self.span.file_name, self.span.loc_start.row + 1, self.span.loc_start.col + 1,
 			self.span.loc_start.row + 1,
