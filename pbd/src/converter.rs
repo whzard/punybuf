@@ -147,11 +147,11 @@ fn convert_enum_variants(variants: &Vec<PBEnumVariant>) -> json::JsonValue {
 
 fn convert_type(tp: &PBTypeDef) -> json::JsonValue {
 	let mut obj = json::object! {
-		name: tp.get_name().0.as_str(),
+		name: tp.get_name().0,
 		layer: *tp.get_layer(),
 		generic_args: tp.get_generics().0.as_slice(),
 		attrs: convert_attrs(tp.get_attrs()),
-		doc: tp.get_doc().as_str(),
+		doc: tp.get_doc(),
 		inline_owner: tp.get_inline_owner().as_ref().map(|x| x.0.as_str()),
 	};
 

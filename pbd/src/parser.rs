@@ -21,7 +21,7 @@ pub enum ValueReference {
 	}
 }
 impl ValueReference {
-	pub fn get_name(&self) -> &String {
+	pub fn get_name(&self) -> &str {
 		match &self {
 			ValueReference::InlineDeclaration { symbol, decl: _, name_span: _, decl_span: _ } => symbol,
 			ValueReference::Reference { name, generics: _, name_span: _, generic_span: _ } => name

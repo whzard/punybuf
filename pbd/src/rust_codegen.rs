@@ -139,7 +139,7 @@ impl RustCodegen {
 	}
 	fn get_type_name(&self, tp: &PBTypeDef) -> String {
 		let mut result = if tp.is_highest_layer() {
-			tp.get_name().0.clone()
+			tp.get_name().0.to_string()
 		} else {
 			format!("{}Layer{}", tp.get_name().0, tp.get_layer())
 		};
