@@ -52,8 +52,10 @@ Options:
 ```
 
 ## Repository structure
-`/pbd` - CLI tool
-`/rust_punybuf_common` - Rust crate for `common`
+- `/pbd` - CLI tool
+- `/docs` - Documentation
+- `/vscode-sytax-highlighting` - VSCode extension for syntax highlighting
+- `/rust_punybuf_common` - Rust crate for `common`
 
 ## TODO
 - Add tests
