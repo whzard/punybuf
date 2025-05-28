@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, u32};
 
 use crate::{errors::{parser_err, pb_err, ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError}, flattener::{PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBFieldFlag, PBTypeDef, PBTypeRef, PunybufDefinition}, lexer::Span};
 
@@ -65,6 +65,12 @@ impl<'a> Owner<'a> {
 			Owner::CommandOwner(cmd) => &cmd.attrs
 		}
 	}
+	fn get_layer(&self) -> &u32 {
+		match self {
+			Self::TypeOwner(tp) => tp.get_layer(),
+			Self::CommandOwner(cmd) => &cmd.layer
+		}
+	}
 }
 
 pub struct PunybufValidator<'pbd> {
@@ -73,6 +79,7 @@ pub struct PunybufValidator<'pbd> {
 }
 
 impl<'d> PunybufValidator<'d> {
+	/// Returns Ok(maximum amount of flags)
 	fn follow_to_flags_attr<'a>(
 		&'a self, decl: &'a PBTypeDef,
 		owner: &Owner, tries: usize
@@ -139,6 +146,7 @@ impl<'d> PunybufValidator<'d> {
 				} else {
 					let generics = generic_args.iter().map(|n| (n, generic_span)).collect();
 
+					// Aliases cannot resolve to `Void` anyway
 					let def = self.validate_reference_void(
 						alias,
 						owner,
@@ -159,6 +167,9 @@ impl<'d> PunybufValidator<'d> {
 				}
 			}
 		}
+	}
+	fn find_type_by_name(&self, name: &str, limit_layer: u32) -> Option<&PBTypeDef> {
+		self.definition.types.iter().rev().find(|typ| *typ.get_name().0 == name && *typ.get_layer() <= limit_layer)
 	}
 	fn validate_reference(&self, refr: &PBTypeRef, owner: &Owner) -> Result<ReferenceDefinition<'_>, PunybufError> {
 		if refr.reference == "Void" {
@@ -190,7 +201,7 @@ impl<'d> PunybufValidator<'d> {
 				));
 			}
 
-			if let Some(decl) = self.definition.types.iter().find(|typ| *typ.get_name().0 == refr.reference) {
+			if let Some(decl) = self.find_type_by_name(&refr.reference, u32::MAX) {
 				match decl {
 					PBTypeDef::Alias { .. } => {},
 					PBTypeDef::Enum { inline_owner, .. } |
@@ -224,7 +235,7 @@ impl<'d> PunybufValidator<'d> {
 			return Ok(ReferenceDefinition::GenericArgument(generic_ref.1.clone()));
 		}
 
-		match self.definition.types.iter().find(|typ| *typ.get_name().0 == refr.reference) {
+		match self.find_type_by_name(&refr.reference, *owner.get_layer()) {
 			Some(decl) => {
 				match decl {
 					PBTypeDef::Alias { .. } => {
@@ -372,7 +383,35 @@ impl<'d> PunybufValidator<'d> {
 				Ok(ReferenceDefinition::TopLevelDecl(decl))
 			},
 			None => {
-				if COMMON_TYPES.iter().find(|x| x == &&refr.reference).is_some() {
+				if let Some(decl) = self.find_type_by_name(&refr.reference, u32::MAX) {
+					return Err(pb_err!(
+						refr.reference_span,
+						format!("type `{}` cannot be referenced from a lower layer", refr.reference),
+						ExtendedErrorExplanation::custom(vec![
+							InfoExplanation {
+								span: owner.get_name().1.clone(),
+								content: format!("`{}` is declared at layer {}...", owner.get_name().0, owner.get_layer()),
+								level: InfoLevel::Info
+							},
+							InfoExplanation {
+								span: refr.reference_span.clone(),
+								content: format!("...and references `{}`...", refr.reference),
+								level: InfoLevel::Error
+							},
+							InfoExplanation {
+								span: decl.get_name().1.clone(),
+								content: format!(
+									"...but `{}` is first declared at layer {} and doesn't exist at layer {}",
+									decl.get_name().0,
+									decl.get_layer(),
+									owner.get_layer()
+								),
+								level: InfoLevel::Info
+							},
+						])
+					));
+				}
+				if COMMON_TYPES.iter().find(|x| *x == &refr.reference).is_some() {
 					return Err(pb_err!(
 						refr.reference_span,
 						format!("cannot find type `{}` in scope, perhaps you forgot to `include common`?", refr.reference)
@@ -759,7 +798,6 @@ impl<'d> PunybufValidator<'d> {
 	/// re-declarations, references to inline declarations, and stuff like that
 	/// 
 	/// Known issue: does not catch self-referential types.
-	/// Known issue: does not catch things in lower layers referencing types in higher layers.
 	// TODO: ^^^
 	pub fn validate(&mut self) -> Result<(), PunybufError> {
 		let mut declared_things: Vec<(&String, &u32, &Span, ThingKind)> = vec![];
