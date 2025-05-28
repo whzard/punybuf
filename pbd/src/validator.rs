@@ -47,7 +47,7 @@ pub enum Owner<'a> {
 }
 
 impl<'a> Owner<'a> {
-	fn get_name(&self) -> (&String, &Span) {
+	fn get_name(&self) -> (&str, &Span) {
 		match self {
 			Owner::CommandOwner(cmd) => (&cmd.name, &cmd.name_span),
 			Owner::TypeOwner(tp) => tp.get_name()
@@ -75,7 +75,7 @@ impl<'a> Owner<'a> {
 
 pub struct PunybufValidator<'pbd> {
 	pub definition: &'pbd PunybufDefinition,
-	context_generic_args: Vec<(&'pbd String, &'pbd Span)>
+	context_generic_args: Vec<(&'pbd str, &'pbd Span)>
 }
 
 impl<'d> PunybufValidator<'d> {
@@ -144,7 +144,7 @@ impl<'d> PunybufValidator<'d> {
 				} else if attrs.contains_key(&"@builtin".to_string()) {
 					return Err(FlagsAttrError::NoAttribute(decl));
 				} else {
-					let generics = generic_args.iter().map(|n| (n, generic_span)).collect();
+					let generics = generic_args.iter().map(|n| (n.as_str(), generic_span)).collect();
 
 					// Aliases cannot resolve to `Void` anyway
 					let def = self.validate_reference_void(
@@ -169,7 +169,7 @@ impl<'d> PunybufValidator<'d> {
 		}
 	}
 	fn find_type_by_name(&self, name: &str, limit_layer: u32) -> Option<&PBTypeDef> {
-		self.definition.types.iter().rev().find(|typ| *typ.get_name().0 == name && *typ.get_layer() <= limit_layer)
+		self.definition.types.iter().rev().find(|typ| typ.get_name().0 == name && *typ.get_layer() <= limit_layer)
 	}
 	fn validate_reference(&self, refr: &PBTypeRef, owner: &Owner) -> Result<ReferenceDefinition<'_>, PunybufError> {
 		if refr.reference == "Void" {
@@ -182,7 +182,7 @@ impl<'d> PunybufValidator<'d> {
 	}
 	fn validate_reference_void(
 		&self, refr: &PBTypeRef,
-		owner: &Owner, override_generic_args: Option<&Vec<(&String, &Span)>>
+		owner: &Owner, override_generic_args: Option<&Vec<(&str, &Span)>>
 	) -> Result<ReferenceDefinition<'_>, PunybufError> {
 		let generic_args = override_generic_args.unwrap_or(&self.context_generic_args);
 
@@ -425,9 +425,9 @@ impl<'d> PunybufValidator<'d> {
 		}
 	}
 	pub fn validate_generic_args(args: &Vec<String>, span: &Span) -> Result<(), PunybufError> {
-		let mut declared_args: Vec<&String> = vec![];
+		let mut declared_args: Vec<&str> = vec![];
 		for ga in args {
-			if declared_args.contains(&ga) {
+			if declared_args.contains(&ga.as_str()) {
 				return Err(pb_err!(
 					span,
 					format!("generic argument `{ga}` defined twice")
@@ -439,9 +439,9 @@ impl<'d> PunybufValidator<'d> {
 	}
 	pub fn validate_flags(&self, owner: &Owner, flags: &Vec<PBFieldFlag>) -> Result<(), PunybufError> {
 		let is_sealed = owner.get_attrs().contains_key("@sealed");
-		let mut extension_begin = None::<(&String, &Span)>;
+		let mut extension_begin = None::<(&str, &Span)>;
 
-		let mut seen_names: Vec<(&String, &Span)> = vec![];
+		let mut seen_names: Vec<(&str, &Span)> = vec![];
 		for flag in flags {
 			if let Some(dupe) = seen_names.iter().find(|n| *n.0 == flag.name) {
 				return Err(pb_err!(
@@ -510,7 +510,7 @@ impl<'d> PunybufValidator<'d> {
 		Ok(())
 	}
 	pub fn validate_struct(&mut self, owner: &Owner, fields: &Vec<PBField>) -> Result<(), PunybufError> {
-		let mut seen_names: Vec<(&String, &Span)> = vec![];
+		let mut seen_names: Vec<(&str, &Span)> = vec![];
 		for field in fields {
 			if field.attrs.contains_key("@extension") {
 				return Err(pb_err!(
@@ -647,7 +647,7 @@ impl<'d> PunybufValidator<'d> {
 		let mut default_variant_present = false;
 		let mut extension_discriminant = None::<u8>;
 
-		let mut seen_names: Vec<(&String, &Span)> = vec![];
+		let mut seen_names: Vec<(&str, &Span)> = vec![];
 		for variant in variants {
 			if let Some(already_decl) = seen_names.iter().find(|n| *n.0 == variant.name) {
 				return Err(pb_err!(
@@ -737,7 +737,7 @@ impl<'d> PunybufValidator<'d> {
 			return Ok(());
 		}
 
-		self.context_generic_args = generic_args.iter().map(|n| (n, generic_span)).collect();
+		self.context_generic_args = generic_args.iter().map(|n| (n.as_str(), generic_span)).collect();
 
 		let mut is_alias = false;
 
@@ -800,7 +800,7 @@ impl<'d> PunybufValidator<'d> {
 	/// Known issue: does not catch self-referential types.
 	// TODO: ^^^
 	pub fn validate(&mut self) -> Result<(), PunybufError> {
-		let mut declared_things: Vec<(&String, &u32, &Span, ThingKind)> = vec![];
+		let mut declared_things: Vec<(&str, &u32, &Span, ThingKind)> = vec![];
 		for tp in &self.definition.types {
 			if let Some(already_decl) = declared_things.iter().find(|x| x.0 == tp.get_name().0 && x.1 == tp.get_layer()) {
 				return Err(pb_err!(
@@ -832,7 +832,7 @@ impl<'d> PunybufValidator<'d> {
 			}
 		}
 
-		let mut just_in_case_seen_ids = HashMap::<u32, (&String, &u32, &Span)>::new();
+		let mut just_in_case_seen_ids = HashMap::<u32, (&str, &u32, &Span)>::new();
 		for cmd in &self.definition.commands {
 			if let Some(already_decl) = declared_things
 				.iter()

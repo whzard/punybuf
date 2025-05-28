@@ -63,7 +63,7 @@ impl LayerResolver {
 			self.new_dependant(generic_ref, clone.clone());
 		}
 	}
-	fn new_dependant_string(&mut self, depends_on: &String, dependant: Dependant) {
+	fn new_dependant_string(&mut self, depends_on: &str, dependant: Dependant) {
 		if *depends_on == dependant.name {
 			// this is normal, as several builtins are defined like "Type = Type"
 			return;
@@ -75,7 +75,7 @@ impl LayerResolver {
 		} else {
 			let mut hs = HashSet::new();
 			hs.insert(dependant.clone());
-			self.dependencies.insert(depends_on.clone(), hs);
+			self.dependencies.insert(depends_on.to_string(), hs);
 		}
 	}
 	fn analyze_struct_dependencies(&mut self, fields: &Vec<PBField>, dependant: Dependant) {
@@ -102,7 +102,7 @@ impl LayerResolver {
 	}
 	fn analyze_type_dependencies(&mut self, tp: &PBTypeDef) {
 		let dep = Dependant {
-			name: tp.get_name().0.clone(),
+			name: tp.get_name().0.to_string(),
 			layer: *tp.get_layer(),
 			kind: DependantKind::Type
 		};
@@ -139,7 +139,7 @@ impl LayerResolver {
 
 		self.analyze_enum_dependencies(&cmd.err, dep);
 	}
-	fn get_highest_layer<'def>(definition: &'def PunybufDefinition, name: &String, limit_layer: u32) -> Option<TypeOrCmdDef<'def>> {
+	fn get_highest_layer<'def>(definition: &'def PunybufDefinition, name: &str, limit_layer: u32) -> Option<TypeOrCmdDef<'def>> {
 		let mut possible_commands = definition.commands.iter()
 			.filter(|cmd| cmd.layer <= limit_layer && cmd.name == *name)
 			.collect::<Vec<_>>();
@@ -305,7 +305,7 @@ impl LayerResolver {
 
 		result
 	}
-	fn resolve_is_highest_layer(&self, definition: &PunybufDefinition, name: &String, parent_layer: u32) -> bool {
+	fn resolve_is_highest_layer(&self, definition: &PunybufDefinition, name: &str, parent_layer: u32) -> bool {
 		let highest_layer = Self::get_highest_layer(definition, name, u32::MAX)
 			.expect("can't find highest layer, reference not resolved"); // trust the validator + resolver
 		*highest_layer.get_layer() == parent_layer

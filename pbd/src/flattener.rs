@@ -94,7 +94,7 @@ pub enum PBTypeDef {
 }
 
 impl PBTypeDef {
-	pub fn get_name(&self) -> (&String, &Span) {
+	pub fn get_name(&self) -> (&str, &Span) {
 		match self {
 			Self::Alias { name, name_span, .. } |
 			Self::Enum { name, name_span, .. } |
@@ -122,7 +122,7 @@ impl PBTypeDef {
 			Self::Struct { attrs, .. } => attrs
 		}
 	}
-	pub fn get_doc(&self) -> &String {
+	pub fn get_doc(&self) -> &str {
 		match self {
 			Self::Alias { doc, .. } |
 			Self::Enum { doc, .. } |
@@ -248,7 +248,7 @@ impl PunybufDefinition {
 		}
 	}
 	pub fn flatten_value_enum_variant(&mut self, vev: ValueEnumVariant) -> PBEnumVariant {
-		let name = vev.value.get_name().clone();
+		let name = vev.value.get_name().to_string();
 		let name_span = vev.value.get_name_span().clone();
 		PBEnumVariant {
 			name, name_span,
