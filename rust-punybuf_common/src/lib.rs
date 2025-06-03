@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, io::{self, Error, Read, Write}};
+use std::{borrow::Cow, collections::HashMap, io::{self, Error, Read, Write}, ops::*};
 
 mod const_macro;
 const MAX_BYTES_LENGTH: usize = const_unwrap!(usize::from_str_radix(env!("PUNYBUF_MAX_BYTES_LENGTH"), 10));
@@ -48,6 +48,7 @@ impl PBType for Done {
 }
 
 /// A variable-length integer. The greatest supported value is 1152921573328437375.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UInt(pub u64);
 impl Into<u64> for UInt {
     fn into(self) -> u64 {
@@ -69,6 +70,44 @@ impl From<usize> for UInt {
         Self(value as u64)
     }
 }
+impl From<i32> for UInt {
+    fn from(value: i32) -> Self {
+        Self(value as u64)
+    }
+}
+
+impl BitOr<u64> for UInt {
+    type Output = UInt;
+    fn bitor(self, rhs: u64) -> Self::Output {
+        Self(self.0 | rhs)
+    }
+}
+
+impl BitOrAssign<u64> for UInt {
+    fn bitor_assign(&mut self, rhs: u64) {
+        self.0 |= rhs
+    }
+}
+
+impl BitAnd<u64> for UInt {
+    type Output = UInt;
+    fn bitand(self, rhs: u64) -> Self::Output {
+        Self(self.0 & rhs)
+    }
+}
+
+impl BitAndAssign<u64> for UInt {
+    fn bitand_assign(&mut self, rhs: u64) {
+        self.0 &= rhs
+    }
+}
+
+impl PartialEq<u64> for UInt {
+    fn eq(&self, other: &u64) -> bool {
+        &self.0 == other
+    }
+}
+
 
 impl PBType for UInt {
     const MIN_SIZE: usize = 1;

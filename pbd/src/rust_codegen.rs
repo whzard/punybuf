@@ -317,7 +317,6 @@ impl RustCodegen {
 	}
 	fn gen_fields(&mut self, fields: &Vec<PBField>) {
 		for field in fields {
-			appendf!(self, "    pub {}: {},\n", field.name, self.gen_reference(&field.value, false));
 			if let Some(flags) = &field.flags {
 				for flag in flags {
 					appendf!(self, "    // Flag of {}\n", field.name);
@@ -328,6 +327,10 @@ impl RustCodegen {
 						appendf!(self, "bool,\n");
 					}
 				}
+			} else {
+				// Flag fields are an implementation detail and we would like
+				// to hide it (so that the struct is easily constructablt)
+				appendf!(self, "    pub {}: {},\n", field.name, self.gen_reference(&field.value, false));
 			}
 		}
 	}
@@ -340,17 +343,20 @@ impl RustCodegen {
 			appendf!(self, ",\n")
 		}
 	}
+	/* fn gen_flags_type(&self, flags_type: &PBTypeRef) -> &str {
+		
+	} */
 	fn gen_serialize_fields(&mut self, fields: &Vec<PBField>, extensible: bool) {
 		let mut has_extensions = false;
 		for field in fields {
 			if let Some(flags) = &field.flags {
 				appendf!(self, "        // If you get an error here, this type doesn't support flags.\n");
-				appendf!(self, "        let mut flags: {} = 0.try_into().unwrap();\n", self.gen_reference(&field.value, true));
+				appendf!(self, "        let mut flags: {} = 0.try_into().unwrap();\n", self.gen_reference(&field.value, false));
 				for (i, flag) in flags.iter().enumerate() {
 					if flag.value.is_some() {
-						appendf!(self, "        if self.{}.is_some() {{ flags |= (1 << {i}) }}\n", flag.name);
+						appendf!(self, "        if self.{}.is_some() {{ flags |= 1 << {i} }}\n", flag.name);
 					} else {
-						appendf!(self, "        if self.{} {{ flags |= (1 << {i}) }}\n", flag.name);
+						appendf!(self, "        if self.{} {{ flags |= 1 << {i} }}\n", flag.name);
 					}
 				}
 				appendf!(self, "        flags.serialize(w){}?;\n", self.maybe_await());
@@ -418,24 +424,30 @@ impl RustCodegen {
 			for field in fields {
 				let Some(flags) = &field.flags else { continue };
 				for (i, flag) in flags.iter().enumerate() {
-					let Some(val) = &flag.value else { continue };
 					if !flag.attrs.contains_key("@extension") {
 						continue;
 					}
 
-					appendf!(self, "        let {} = if ({} & (1 << {i})) != 0 {{\n", flag.name, field.name);
-					appendf!(self, "            Some({}::deserialize(_extension_reader){}?)\n", self.gen_reference(val, true), self.maybe_await());
-					appendf!(self, "        }} else {{ None }};\n");
+					if let Some(val) = &flag.value {
+						appendf!(self, "        let {} = if ({} & (1 << {i})) != 0 {{\n", flag.name, field.name);
+						appendf!(self, "            Some({}::deserialize(_extension_reader){}?)\n", self.gen_reference(val, true), self.maybe_await());
+						appendf!(self, "        }} else {{ None }};\n");
+
+					} else {
+						appendf!(self, "        let {} = ({} & (1 << {i})) != 0;\n", flag.name, field.name);
+					}
 				}
 			}
 		}
 		appendf!(self, "        Ok(Self {{\n");
 		for field in fields {
-			appendf!(self, "            {},\n", field.name);
 			if let Some(flags) = &field.flags {
 				for flag in flags {
 					appendf!(self, "            {},\n", flag.name);
 				}
+			} else {
+				// We don't want to expose the actual flags value in the struct
+				appendf!(self, "            {},\n", field.name);
 			}
 		}
 		appendf!(self, "        }})\n");
