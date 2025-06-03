@@ -25,14 +25,14 @@ A variable-length unsigned integer. The format for this integer is as follows:
 1111xxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx + 68721590400
 ```
 The first bits (length bits) of the first octet represent the amount of octets needed for the whole number, as defined by the figure above.  
-If we stopped there, there would be multiple ways of representing small numbers, e.g. `52` could be both written as `00110100` and `10000000 00110100`. To prevent this and to also pack more numbers per byte, punybuf's varints pack additional information into the length bits: since the largest possible number that we can represent with 1 octet is `01111111 = 127`, the smallest possible number we are able to represent with 2 octets shall be `128`, represented as `10000000 00000000`. Therefore, if a varint takes 2 octets, we must add `128` to it, and so on, and so forth.
+If we stopped there, there would be multiple ways of representing small numbers, e.g. `52` could be both written as `00110100` and `10000000 00110100`. To prevent this and to also pack more numbers per byte, punybuf's varints pack additional information into the length bits: since the largest possible number that we can represent with 1 octet is `01111111 = 127`, the smallest possible number we are able to represent with 2 octets shall be `128`, represented as `10000000 00000000`. Therefore, if a varint takes 2 octets, we must add `128` to it, and so on, and so forth. Consult the above diagram for the actual numbers that should be added.
 
 Since the greatest number we can represent, 1152921573328437375, doesn't work out to a power of two, for safety and clarity, implementations may decide to set the maximum possible representable number to 2^60.
 
 So, a `UInt` in Protobuf must deserialize to a number that can hold 2^60 bits, usually a 64-bit integer.
 
 > **Rationale:**  
-> For performance reasons, we'd like for the entire length of the number to be known as soon as the first byte is read, so Protobuf-style numbers are not possible. However, most numbers are small. Using QUIC-style numbers, where the first two bits encode the length, means that we'd be limited to just 64 numbers we can represent with 1 byte. This seems like an acceptable trade-off, where small numbers (<16512) can be easily represented with 2 bytes, medium numbers (<2113664) can be represented with 3, and the uncommon larger numbers can be represented with either 5 or 8 bytes, because even large numbers, like the entire population, rarely exceed 68 billion (but do exceed 200 million, which we could fit in 4 bytes).
+> For performance reasons, we'd like for the entire length of the number to be known as soon as the first byte is read, so Protobuf-style numbers are not possible. However, most numbers are small. Using QUIC-style numbers, where the first two bits encode the length, means that we'd be limited to just 64 numbers we can represent with 1 byte. So, using our UInts seems like an acceptable trade-off, where small numbers (<16512) can be easily represented with 2 bytes, medium numbers (<2113664) can be represented with 3, and the uncommon larger numbers can be represented with either 5 or 8 bytes, because even large numbers, like the entire population, rarely exceed 68 billion (but do exceed 200 million, which we could fit in 4 bytes).
 
 #### Array
 The type `Array<T>` is represented in memory as a `UInt`, representing the number of items `n`, immediately followed by `T*n`.
@@ -75,7 +75,7 @@ User = {
 	name: String
 }
 ```
-The above struct's flags could have 16 invariants (ignoring possible string values), here are some of them:
+The above struct's flags could have 16 variants (ignoring possible string values), here are some of them:
 ```
 00000001 {String} <-- name (always present)
        ^
@@ -297,7 +297,7 @@ If the flag is set, the value of that flag must be put **after the EL boundary**
                                        ^   |--n--|
                                        EL
 ```
-> `n` has to contain the *entire* length of `Bytes`, including the `UInt`, also representing the length.
+> `n` has to contain the *entire* length of [`Bytes`](#bytes), including the `UInt`, also representing the length.
 
 To an outdated deserializer, this value will look like this:
 ```
@@ -338,7 +338,7 @@ The EL comprises the lengths of all set extensions.
 
 **TODO: the following is not yet supported. Must implement checks for either flag field exhaustion, or no flags and convenience properties on the IR. Decide whether we allow multiple extension flag fields. Decide whether supporting this at all is worth it. Maybe only structs with flag fields may be extended until they are exhausted. Maybe only structs without flag fields may have `@extension_flags`.**
 
-**If a struct doesn't have a flag field, or if it's exhausted,**  
+**If a struct doesn't have a flag field, or if they're exhausted,**  
 the user defines an `@extension_flags` field that puts this flag field after the EL **AND** after all previous extensions on existing flag fields.
 
 So, this...
@@ -396,7 +396,7 @@ This is to preserve the property of "one way to represent one value"
 
 **Important**: structs marked as `@sealed` do not support extensions and don't have an EL (extra `UInt`) at the end.
 
-Command arguments can also be structs, and this can also be extended in such way.
+Command arguments can also be structs, and thus can also be extended in such way.
 
 ### Extending enums
 Compared to structs, extending enums is very simple. If the user defined a `@default` variant, the enum is extensible. Otherwise, the enum is "sealed".

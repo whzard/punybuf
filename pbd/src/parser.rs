@@ -105,11 +105,11 @@ pub enum DeclarationValue {
 	Flexible {
 		val: FlexibleDeclarationValue,
 		val_span: Span,
-		generic_args: Vec<String>,
+		generic_params: Vec<String>,
 		generic_span: Span,
 	},
 	AliasDeclaration {
-		generic_args: Vec<String>,
+		generic_params: Vec<String>,
 		generic_span: Span,
 		layer: u32,
 		alias: Box<ValueReference>,
@@ -219,7 +219,7 @@ impl<'parser> Parser<'parser> {
 								Some(Token { data: TokenData::Symbol(_), span: _ }) => {
 									let refr = Parser::parse_reference(&mut self.peekable, &equals_or_colon.span, layer)?;
 									value = DeclarationValue::AliasDeclaration {
-										generic_args: generic_arguments,
+										generic_params: generic_arguments,
 										generic_span, layer,
 										alias: Box::new(refr)
 									};
@@ -233,7 +233,7 @@ impl<'parser> Parser<'parser> {
 										val: flex,
 										val_span,
 										generic_span,
-										generic_args: generic_arguments
+										generic_params: generic_arguments
 									};
 								}
 							}
@@ -732,7 +732,7 @@ impl<'parser> Parser<'parser> {
 							Some(Token { data: TokenData::CurlyBraces(_), span: braces_span }) => {
 								return Err(PunybufError {
 									span: braces_span.clone(),
-									error: format!("unexpected `{{ ... }}`; you cannot define generic arguments for inline declarations, such as `{name}`"),
+									error: format!("unexpected `{{ ... }}`; you cannot define generic parameters for inline declarations, such as `{name}`"),
 									explanation: Some(
 										ExtendedErrorExplanation::error_and(vec![
 											InfoExplanation {

@@ -141,8 +141,40 @@ Sometimes, if we're using a type often (or if we want to give more meaning to a 
 ```pbd
 MultipleStrings = Array<String>
 ```
-We then may use this alias as we'd normally use a type. Some code generators may automatically resolve it for you, some of them won't. You may add a [`@resolve`](Attributes.md#resolve) attribute to always resolve an alias.
+We then may use this alias as we'd normally use a type. Some code generators may automatically resolve it for you, some won't. You may add a [`@resolve`](Attributes.md#resolve) attribute to always resolve an alias.
 
+### Generics
+If your custom type needs to take a generic argument, you may declare it like so:
+```pbd
+UserWith<T> = {
+	user: User
+	and_also: T
+}
+```
+You may substitute `T` with any other type:
+```pbd
+Example = {
+	example: UserWith<Cat>
+	example2: UserWith<String>
+	example3: UserWith<UserWith<String>>
+}
+```
+
+Multiple generic parameters need to be separated by a comma. For example, this is how the common `Map<K, V>` type is declared:
+```pbd
+KeyPair<K, V> = {
+	key: K
+	value: V
+}
+
+Map<K, V> = KeyPair<K, V>
+
+AverageMapUser = {
+	map: Map<String, String>
+}
+```
+
+---
 This is how Punybuf types work. You may use this knowledge to serialize and deserialize things for storage or transmission. If, however, you're planning on building some kind of RPC system, you might want to consider commands.
 
 ### Commands
@@ -167,7 +199,7 @@ getUserByID: U64 -> User ![InvalidID]
 That's it. Over time though, your application will probably need to extend its protocol to support new features. Unless you can guarentee that both ends of a Punybuf RPC channel will stay up-to-date, you might need to support outdated clients. There are two ways to do this.
 
 ## Extensions
-Exitensions allow adding more fields to already existing structs and adding variants to already existing enums.
+Extensions allow adding more fields to already existing structs and adding variants to already existing enums.
 
 ### Extending structs
 By default, all structs are extensible. Internally, that just means they have an extra [`UInt`](./BinaryFormat.md#uint) at the end, representing the size in bytes of the extensions, so that outdated clients can skip over the unsupported extensions.
@@ -194,5 +226,11 @@ User = {
 	}
 }
 ```
+
+Each extension is defined on an existing flag field and its presence is indicated by whether the flag is set. The data for the extension itself (`Array<String>` in our case) is defined after the extension boundary. You can read about how the binary format actually works [here](BinaryFormat.md#extensions).
+
+Extensions on flag fields may only be defined until the flag fields are exhausted. If our flag field's type is `U8`, for example, it may only hold 8 bits and thus cannot carry more than 8 flags. If our flag field is exhausted, we can't add extensions to it.
+
+**TODO: see [about extension fields](BinaryFormat.md#extending-structs)**
 
 **TODO: enum extensions, additional struct extensions, layers**

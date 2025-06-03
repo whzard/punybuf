@@ -11,7 +11,7 @@ type Schema = {
 		name: string
 		layer: number
 		is: "struct" | "enum" | "alias"
-		generic_args: string[]
+		generic_params: string[]
 		attrs: Attrs
 		doc: string
 		inline_owner?: String
@@ -85,7 +85,7 @@ type Schema = {
 	}[]
 }
 
-type Ref = [name: string, layer: number | null, generic_args: Ref[], is_highest_layer: boolean]
+type Ref = [name: string, layer: number | null, generic_params: Ref[], is_highest_layer: boolean]
 
 type Attrs = Record<string, string | null>
 

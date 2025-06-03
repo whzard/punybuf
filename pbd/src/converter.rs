@@ -6,7 +6,7 @@
 			name: string
 			layer: number
 			is: "struct" | "enum" | "alias"
-			generic_args: string[]
+			generic_params: string[]
 			attrs: Attrs
 			doc: string
 			inline_owner?: String
@@ -77,7 +77,7 @@
 		}[]
 	}
 
-	Ref = [name: string, layer: number | null, generic_args: Ref[], is_highest_layer: boolean]
+	Ref = [name: string, layer: number | null, generic_params: Ref[], is_highest_layer: boolean]
 	Attrs = Record<string, string | null>
 */
 
@@ -152,7 +152,7 @@ fn convert_type(tp: &PBTypeDef) -> json::JsonValue {
 	let mut obj = json::object! {
 		name: tp.get_name().0,
 		layer: *tp.get_layer(),
-		generic_args: tp.get_generics().0.as_slice(),
+		generic_params: tp.get_generics().0.as_slice(),
 		attrs: convert_attrs(tp.get_attrs()),
 		doc: tp.get_doc(),
 		inline_owner: tp.get_inline_owner().as_ref().map(|x| x.0.as_str()),
