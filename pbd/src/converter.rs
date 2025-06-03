@@ -10,6 +10,7 @@
 			attrs: Attrs
 			doc: string
 			inline_owner?: String
+			is_highest_layer: boolean
 
 			// is alias?
 			alias?: Ref
@@ -43,6 +44,7 @@
 			id: number
 			doc: string
 			attrs: Attrs
+			is_highest_layer: boolean
 
 			argument?: {
 				is: "ref" | "struct"
@@ -75,7 +77,7 @@
 		}[]
 	}
 
-	Ref = [name: string, layer: number | null, generic_args: Ref[]]
+	Ref = [name: string, layer: number | null, generic_args: Ref[], is_highest_layer: boolean]
 	Attrs = Record<string, string | null>
 */
 
@@ -96,7 +98,8 @@ fn convert_ref(refr: &PBTypeRef) -> json::JsonValue {
 	json::array![
 		refr.reference.as_str(),
 		refr.resolved_layer,
-		refr.generics.iter().map(|r| convert_ref(r)).collect::<Vec<_>>()
+		refr.generics.iter().map(|r| convert_ref(r)).collect::<Vec<_>>(),
+		refr.is_highest_layer
 	]
 }
 
@@ -153,6 +156,7 @@ fn convert_type(tp: &PBTypeDef) -> json::JsonValue {
 		attrs: convert_attrs(tp.get_attrs()),
 		doc: tp.get_doc(),
 		inline_owner: tp.get_inline_owner().as_ref().map(|x| x.0.as_str()),
+		is_highest_layer: tp.is_highest_layer(),
 	};
 
 	match tp {
@@ -196,7 +200,8 @@ fn convert_command(cmd: &PBCommandDef) -> json::JsonValue {
 		doc: cmd.doc.as_str(),
 		arg: arg,
 		ret: convert_ref(&cmd.ret),
-		err: convert_enum_variants(&cmd.err)
+		err: convert_enum_variants(&cmd.err),
+		is_highest_layer: cmd.is_highest_layer
 	}
 }
 

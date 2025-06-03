@@ -41,7 +41,7 @@ Arguments:
 Options:
   -q, --quiet          Do not print JSON into stdout
   -l, --loud           Do print JSON into stdout, overrides -q
-  -o, --out <OUT>...   Output - only .rs files supported. Implies -q
+  -o, --out <OUT>...   Output - only .rs, .json files supported. Implies -q
   -c, --compat <JSON>  (WIP) Check binary compatibility with the previous version (json file). If compatible, overwrite the file, otherwise, error.
   -d, --dry-run        Do not write anything to the filesystem.
       --verbose        Be verbose. Will print a lot of unnecessary things.
@@ -52,10 +52,10 @@ Options:
 ```
 
 ## Repository structure
-- `/pbd` - CLI tool
-- `/docs` - Documentation
-- `/vscode-sytax-highlighting` - VSCode extension for syntax highlighting
-- `/rust_punybuf_common` - Rust crate for `common`
+- `/pbd` - CLI tool  
+- `/docs` - Documentation  
+- `/vscode-sytax-highlighting` - VSCode extension for syntax highlighting  
+- `/rust_punybuf_common` - Rust crate for `common`  
 
 ## TODO
 - Add tests
