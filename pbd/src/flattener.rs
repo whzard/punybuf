@@ -62,7 +62,7 @@ pub enum PBTypeDef {
 		doc: String,
 		layer: u32,
 		attrs: HashMap<String, Option<String>>,
-		generic_args: Vec<String>,
+		generic_params: Vec<String>,
 		generic_span: Span,
 		fields: Vec<PBField>,
 		inline_owner: Option<(String, Span)>,
@@ -74,7 +74,7 @@ pub enum PBTypeDef {
 		doc: String,
 		layer: u32,
 		attrs: HashMap<String, Option<String>>,
-		generic_args: Vec<String>,
+		generic_params: Vec<String>,
 		generic_span: Span,
 		variants: Vec<PBEnumVariant>,
 		inline_owner: Option<(String, Span)>,
@@ -86,7 +86,7 @@ pub enum PBTypeDef {
 		doc: String,
 		layer: u32,
 		attrs: HashMap<String, Option<String>>,
-		generic_args: Vec<String>,
+		generic_params: Vec<String>,
 		generic_span: Span,
 		alias: PBTypeRef,
 		is_highest_layer: bool,
@@ -103,9 +103,9 @@ impl PBTypeDef {
 	}
 	pub fn get_generics(&self) -> (&Vec<String>, &Span) {
 		match self {
-			Self::Alias { generic_args, generic_span, .. } |
-			Self::Enum { generic_args, generic_span, .. } |
-			Self::Struct { generic_args, generic_span, .. } => (generic_args, generic_span)
+			Self::Alias { generic_params, generic_span, .. } |
+			Self::Enum { generic_params, generic_span, .. } |
+			Self::Struct { generic_params, generic_span, .. } => (generic_params, generic_span)
 		}
 	}
 	pub fn get_inline_owner(&self) -> &Option<(String, Span)> {
@@ -262,7 +262,7 @@ impl PunybufDefinition {
 		name: String, name_span: Span,
 		doc: String, attrs: HashMap<String, Option<String>>,
 		decl: FlexibleDeclarationValue,
-		generic_args: Vec<String>, generic_span: Span
+		generic_params: Vec<String>, generic_span: Span
 	) {
 		// Rust annoyance: the next line fails without `.clone()` but
 		// shouldn't because we just reassign it on the next line.
@@ -280,7 +280,7 @@ impl PunybufDefinition {
 				self.types.push(PBTypeDef::Enum {
 					name, name_span,
 					doc, attrs,
-					generic_args, generic_span,
+					generic_params, generic_span,
 					variants, layer,
 					inline_owner,
 					is_highest_layer: false,
@@ -294,7 +294,7 @@ impl PunybufDefinition {
 				self.types.push(PBTypeDef::Struct {
 					name, name_span,
 					doc, attrs,
-					generic_args, generic_span,
+					generic_params, generic_span,
 					fields, layer,
 					inline_owner,
 					is_highest_layer: false,
@@ -308,7 +308,7 @@ impl PunybufDefinition {
 				self.types.push(PBTypeDef::Enum {
 					name, name_span,
 					doc, attrs,
-					generic_args, generic_span,
+					generic_params, generic_span,
 					variants, layer,
 					inline_owner,
 					is_highest_layer: false,
@@ -367,25 +367,25 @@ pub fn flatten(decls: Vec<Declaration>, includes_common: bool) -> Result<Punybuf
 					command_id, is_highest_layer: false
 				});
 			}
-			DeclarationValue::AliasDeclaration { generic_args, generic_span, alias, layer } => {
+			DeclarationValue::AliasDeclaration { generic_params, generic_span, alias, layer } => {
 				let alias = def.flatten_reference(*alias);
 				def.types.push(PBTypeDef::Alias {
 					name: decl.symbol,
 					name_span: decl.symbol_span,
 					doc: decl.doc,
 					attrs: decl.attrs,
-					layer, generic_args,
+					layer, generic_params,
 					generic_span, alias,
 					is_highest_layer: false,
 				});
 			}
-			DeclarationValue::Flexible { val, generic_args, generic_span, .. } => {
+			DeclarationValue::Flexible { val, generic_params, generic_span, .. } => {
 				def.flatten_flexible_decl(
 					decl.symbol,
 					decl.symbol_span,
 					decl.doc, decl.attrs,
 					val,
-					generic_args, generic_span,
+					generic_params, generic_span,
 				);
 			}
 		}

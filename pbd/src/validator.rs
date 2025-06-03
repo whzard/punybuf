@@ -32,7 +32,7 @@ enum FlagsAttrError<'a> {
 
 enum ReferenceDefinition<'a> {
 	TopLevelDecl(&'a PBTypeDef),
-	GenericArgument(Span)
+	GenericParam(Span)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,7 +75,7 @@ impl<'a> Owner<'a> {
 
 pub struct PunybufValidator<'pbd> {
 	pub definition: &'pbd PunybufDefinition,
-	context_generic_args: Vec<(&'pbd str, &'pbd Span)>
+	context_generic_params: Vec<(&'pbd str, &'pbd Span)>
 }
 
 impl<'d> PunybufValidator<'d> {
@@ -123,7 +123,7 @@ impl<'d> PunybufValidator<'d> {
 				};
 				Ok(n)
 			}
-			PBTypeDef::Alias { attrs, alias, generic_args, generic_span, .. } => {
+			PBTypeDef::Alias { attrs, alias, generic_params: generic_params, generic_span, .. } => {
 				if let Some(n) = attrs.get(&"@flags".to_string()) {
 					let Some(Ok(n)) = n.as_ref().map(|x| x.trim().parse::<usize>()) else {
 						return Err(FlagsAttrError::Other(
@@ -144,7 +144,7 @@ impl<'d> PunybufValidator<'d> {
 				} else if attrs.contains_key(&"@builtin".to_string()) {
 					return Err(FlagsAttrError::NoAttribute(decl));
 				} else {
-					let generics = generic_args.iter().map(|n| (n.as_str(), generic_span)).collect();
+					let generics = generic_params.iter().map(|n| (n.as_str(), generic_span)).collect();
 
 					// Aliases cannot resolve to `Void` anyway
 					let def = self.validate_reference_void(
@@ -154,7 +154,7 @@ impl<'d> PunybufValidator<'d> {
 					).map_err(|pbe| FlagsAttrError::Other(pbe))?;
 
 					match def {
-						ReferenceDefinition::GenericArgument(_) => {
+						ReferenceDefinition::GenericParam(_) => {
 							Err(FlagsAttrError::AliasGeneric {
 								typedef: &decl,
 								ref_to_generic: (&alias.reference, &alias.reference_span)
@@ -182,19 +182,19 @@ impl<'d> PunybufValidator<'d> {
 	}
 	fn validate_reference_void(
 		&self, refr: &PBTypeRef,
-		owner: &Owner, override_generic_args: Option<&Vec<(&str, &Span)>>
+		owner: &Owner, override_generic_params: Option<&Vec<(&str, &Span)>>
 	) -> Result<ReferenceDefinition<'_>, PunybufError> {
-		let generic_args = override_generic_args.unwrap_or(&self.context_generic_args);
+		let generic_params = override_generic_params.unwrap_or(&self.context_generic_params);
 
-		if let Some(generic_ref) = generic_args.iter().find(|g| *g.0 == refr.reference) {
+		if let Some(generic_ref) = generic_params.iter().find(|g| *g.0 == refr.reference) {
 			if !refr.generics.is_empty() {
 				return Err(pb_err!(
 					refr.generic_span,
-					format!("cannot provide generic parameters to a generic argument"),
+					format!("cannot provide generic arguments to a generic parameter"),
 					ExtendedErrorExplanation::error_and(vec![
 						InfoExplanation {
 							span: generic_ref.1.clone(),
-							content: format!("generic arguments defined here"),
+							content: format!("generic parameters defined here"),
 							level: InfoLevel::Info
 						}
 					])
@@ -215,11 +215,11 @@ impl<'d> PunybufValidator<'d> {
 
 						return Err(pb_err!(
 							refr.reference_span,
-							format!("inline declaration of `{}` conflicts with a generic argument", refr.reference),
+							format!("inline declaration of `{}` conflicts with a generic parameter", refr.reference),
 							ExtendedErrorExplanation::error_and(vec![
 								InfoExplanation {
 									span: generic_ref.1.clone(),
-									content: format!("generic arguments, including `{}`, are defined here...", refr.reference),
+									content: format!("generic parameters, including `{}`, are defined here...", refr.reference),
 									level: InfoLevel::Info
 								},
 								InfoExplanation {
@@ -232,7 +232,7 @@ impl<'d> PunybufValidator<'d> {
 					}
 				}
 			}
-			return Ok(ReferenceDefinition::GenericArgument(generic_ref.1.clone()));
+			return Ok(ReferenceDefinition::GenericParam(generic_ref.1.clone()));
 		}
 
 		match self.find_type_by_name(&refr.reference, *owner.get_layer()) {
@@ -316,47 +316,47 @@ impl<'d> PunybufValidator<'d> {
 					},
 				}
 				
-				let (decl_generic_args, decl_generic_span) = decl.get_generics();
-				if decl_generic_args.len() > refr.generics.len() {
-					let not_provided = decl_generic_args.split_at(refr.generics.len()).1;
+				let (decl_generic_params, decl_generic_span) = decl.get_generics();
+				if decl_generic_params.len() > refr.generics.len() {
+					let not_provided = decl_generic_params.split_at(refr.generics.len()).1;
 					return Err(pb_err!(
 						if refr.generic_span == Span::impossible() { refr.reference_span.clone() }
 						else { refr.generic_span.clone() },
 
 						format!(
 							"type `{}` takes {} generic arguments, but only {} were provided",
-							refr.reference, decl_generic_args.len(), refr.generics.len()
+							refr.reference, decl_generic_params.len(), refr.generics.len()
 						),
 
 						ExtendedErrorExplanation::custom(vec![
 							InfoExplanation {
 								span: decl_generic_span.clone(),
-								content: format!("generic arguments for `{}` are defined here", refr.reference),
+								content: format!("generic parameters for `{}` are defined here", refr.reference),
 								level: InfoLevel::Info
 							},
 							if refr.generic_span == Span::impossible() {
 								InfoExplanation {
 									span: refr.reference_span.clone(),
-									content: format!("no generic parameters (`< ... >`) provided at all"),
+									content: format!("no generic arguments (`< ... >`) provided at all"),
 									level: InfoLevel::Error
 								}
 							} else {
 								InfoExplanation {
 									span: refr.generic_span.clone(),
-									content: format!("missing generic parameters: `{}`", not_provided.join("`, `")),
+									content: format!("missing generic arguments: `{}`", not_provided.join("`, `")),
 									level: InfoLevel::Error
 								}
 							},
 						])
 					));
 				}
-				if decl_generic_args.len() < refr.generics.len() {
+				if decl_generic_params.len() < refr.generics.len() {
 					return Err(pb_err!(
 						if refr.generic_span == Span::impossible() { refr.reference_span.clone() }
 						else { refr.generic_span.clone() },
 						format!(
 							"type `{}` takes only {} generic arguments, but {} were provided",
-							refr.reference, decl_generic_args.len(), refr.generics.len()
+							refr.reference, decl_generic_params.len(), refr.generics.len()
 						),
 						ExtendedErrorExplanation::error_and(vec![
 							if *decl_generic_span == Span::impossible() {
@@ -368,7 +368,7 @@ impl<'d> PunybufValidator<'d> {
 							} else {
 								InfoExplanation {
 									span: decl_generic_span.clone(),
-									content: format!("generic arguments for `{}` are defined here", refr.reference),
+									content: format!("generic parameters for `{}` are defined here", refr.reference),
 									level: InfoLevel::Info
 								}
 							},
@@ -377,7 +377,7 @@ impl<'d> PunybufValidator<'d> {
 				}
 
 				for x in &refr.generics {
-					self.validate_reference_void(x, owner, override_generic_args)?;
+					self.validate_reference_void(x, owner, override_generic_params)?;
 				}
 
 				Ok(ReferenceDefinition::TopLevelDecl(decl))
@@ -424,16 +424,16 @@ impl<'d> PunybufValidator<'d> {
 			}
 		}
 	}
-	pub fn validate_generic_args(args: &Vec<String>, span: &Span) -> Result<(), PunybufError> {
-		let mut declared_args: Vec<&str> = vec![];
-		for ga in args {
-			if declared_args.contains(&ga.as_str()) {
+	pub fn validate_generic_params(params: &Vec<String>, span: &Span) -> Result<(), PunybufError> {
+		let mut declared_params: Vec<&str> = vec![];
+		for ga in params {
+			if declared_params.contains(&ga.as_str()) {
 				return Err(pb_err!(
 					span,
-					format!("generic argument `{ga}` defined twice")
+					format!("generic parameter `{ga}` defined twice")
 				));
 			}
-			declared_args.push(ga);
+			declared_params.push(ga);
 		}
 		Ok(())
 	}
@@ -542,15 +542,15 @@ impl<'d> PunybufValidator<'d> {
 			if let Some(flags) = &field.flags {
 				let field_ref_decl = match field_ref_def {
 					ReferenceDefinition::TopLevelDecl(x) => x,
-					ReferenceDefinition::GenericArgument(span) => {
+					ReferenceDefinition::GenericParam(span) => {
 						return Err(pb_err!(
 							field.value.reference_span,
 							format!("flag fields' types must be marked `@flags`, \
-							but `{}` is a generic argument and cannot be constrained", field.value.reference),
+							but `{}` is a generic parameter and cannot be constrained", field.value.reference),
 							ExtendedErrorExplanation::error_and(vec![
 								InfoExplanation {
 									span: span.clone(),
-									content: format!("generic arguments for `{}` defined here", owner.get_name().0),
+									content: format!("generic parameters for `{}` defined here", owner.get_name().0),
 									level: InfoLevel::Info,
 								}
 							])
@@ -620,7 +620,7 @@ impl<'d> PunybufValidator<'d> {
 						after_error.push(
 							InfoExplanation {
 								span: typedef.get_generics().1.clone(),
-								content: format!("...which defines its generic arguments here..."),
+								content: format!("...which defines its generic parameters here..."),
 								level: InfoLevel::Info
 							}
 						);
@@ -723,13 +723,13 @@ impl<'d> PunybufValidator<'d> {
 		Ok(())
 	}
 	pub fn validate_type(&mut self, tp: &'d PBTypeDef) -> Result<(), PunybufError> {
-		let (attrs, generic_args, generic_span) = match tp {
-			PBTypeDef::Alias { attrs, generic_args, generic_span, .. } |
-			PBTypeDef::Enum { attrs, generic_args, generic_span, .. } |
-			PBTypeDef::Struct { attrs, generic_args, generic_span, .. }
-				=> (attrs, generic_args, generic_span)
+		let (attrs, generic_params, generic_span) = match tp {
+			PBTypeDef::Alias { attrs, generic_params, generic_span, .. } |
+			PBTypeDef::Enum { attrs, generic_params, generic_span, .. } |
+			PBTypeDef::Struct { attrs, generic_params, generic_span, .. }
+				=> (attrs, generic_params, generic_span)
 		};
-		Self::validate_generic_args(generic_args, generic_span)?;
+		Self::validate_generic_params(generic_params, generic_span)?;
 		if attrs.contains_key("@builtin") {
 			// Builtins aren't checked because whatever you write inside them
 			// doesn't matter as they're meant to be constructed outside
@@ -737,7 +737,7 @@ impl<'d> PunybufValidator<'d> {
 			return Ok(());
 		}
 
-		self.context_generic_args = generic_args.iter().map(|n| (n.as_str(), generic_span)).collect();
+		self.context_generic_params = generic_params.iter().map(|n| (n.as_str(), generic_span)).collect();
 
 		let mut is_alias = false;
 
@@ -761,7 +761,7 @@ impl<'d> PunybufValidator<'d> {
 			));
 		}
 
-		self.context_generic_args = vec![];
+		self.context_generic_params = vec![];
 		Ok(())
 	}
 	pub fn validate_command(&mut self, cmd: &'d PBCommandDef) -> Result<(), PunybufError> {
@@ -908,7 +908,7 @@ impl<'d> PunybufValidator<'d> {
 
 impl PunybufDefinition {
 	pub fn as_validator(&self) -> PunybufValidator<'_> {
-		PunybufValidator { definition: self, context_generic_args: vec![] }
+		PunybufValidator { definition: self, context_generic_params: vec![] }
 	}
 	pub fn validate(&self) -> Result<(), PunybufError> {
 		self.as_validator().validate()

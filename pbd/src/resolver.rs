@@ -52,9 +52,9 @@ impl LayerResolver {
 	}
 	fn new_dependant(&mut self, refr: &PBTypeRef, dependant: Dependant) {
 		if !refr.is_global {
-			// a type cannot depend on its own generic arguments.
+			// a type cannot depend on its own generic params.
 			// instead the type that depends on it also depends on all
-			// generic parameters it specifies
+			// generic arguments it specifies
 			return;
 		}
 		let clone = dependant.clone();
@@ -233,23 +233,23 @@ impl LayerResolver {
 		for index in 0..definition.types.len() {
 			let tp = &mut definition.types[index];
 			match tp {
-				PBTypeDef::Alias { alias, generic_args, .. } => {
-					Self::check_if_global_reference(alias, &generic_args);
+				PBTypeDef::Alias { alias, generic_params, .. } => {
+					Self::check_if_global_reference(alias, &generic_params);
 				}
-				PBTypeDef::Enum { variants, generic_args, .. } => {
+				PBTypeDef::Enum { variants, generic_params, .. } => {
 					for var in variants {
 						if let Some(refr) = &mut var.value {
-							Self::check_if_global_reference(refr, &generic_args);
+							Self::check_if_global_reference(refr, &generic_params);
 						}
 					}
 				}
-				PBTypeDef::Struct { fields, generic_args, .. } => {
+				PBTypeDef::Struct { fields, generic_params, .. } => {
 					for fld in fields {
-						Self::check_if_global_reference(&mut fld.value, &generic_args);
+						Self::check_if_global_reference(&mut fld.value, &generic_params);
 						let Some(flags) = &mut fld.flags else { continue };
 						for flag in flags {
 							let Some(val) = &mut flag.value else { continue };
-							Self::check_if_global_reference(val, &generic_args);
+							Self::check_if_global_reference(val, &generic_params);
 						}
 					}
 				}
@@ -272,7 +272,7 @@ impl LayerResolver {
 		self.resolve_references(definition);
 	}
 	fn resolve_alias(refr: &PBTypeRef, tp: &PBTypeDef) -> PBTypeRef {
-		let PBTypeDef::Alias { alias, generic_args, .. } = tp else {
+		let PBTypeDef::Alias { alias, generic_params, .. } = tp else {
 			panic!("bad state: @resolve may only be used on aliases");
 		};
 
@@ -283,8 +283,8 @@ impl LayerResolver {
 			// Opaque<T> = T
 			// ...
 			// Other = { refr: Opaque<InputRef> }
-			let arg_index = generic_args.iter().position(|arg| arg == &result.reference)
-				.expect("bad state: can't find a generic argument");
+			let arg_index = generic_params.iter().position(|arg| arg == &result.reference)
+				.expect("bad state: can't find a generic param");
 			let input_ref = &refr.generics[arg_index]; // should be 0 to be honest
 			return input_ref.clone();
 		}
@@ -296,8 +296,8 @@ impl LayerResolver {
 			// Other = { refr: Alias<InputRef, InputRef> }
 			if output_generic_param.is_global { continue }
 
-			let arg_index = generic_args.iter().position(|arg| arg == &output_generic_param.reference)
-				.expect("bad state: can't find a generic argument");
+			let arg_index = generic_params.iter().position(|arg| arg == &output_generic_param.reference)
+				.expect("bad state: can't find a generic param");
 			let input_ref = &refr.generics[arg_index];
 
 			*output_generic_param = input_ref.clone();
