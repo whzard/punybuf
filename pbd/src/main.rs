@@ -34,7 +34,7 @@ fn main() {
 		.arg(arg!(<INPUT> "The .pbd definition file").required(true))
 		.arg(arg!(-q --quiet "Do not print JSON into stdout"))
 		.arg(arg!(-l --loud "Do print JSON into stdout, overrides -q"))
-		.arg(arg!(-o --out... <OUT> "Output - only .rs files supported. Implies -q").num_args(1..))
+		.arg(arg!(-o --out... <OUT> "Output - only .rs, .json files supported. Implies -q").num_args(1..))
 		.arg(arg!(-c --compat <JSON> 
 			"Check binary compatibility with the previous version (json file). \
 			If compatible, overwrite the file, otherwise, error."
@@ -86,22 +86,28 @@ fn main() {
 		for out_file in out {
 			#[allow(unused_assignments)] // idk why it does that
 			let mut file_type = "unknown";
-			if out_file.ends_with(".rs") {
+			let generated = if out_file.ends_with(".rs") {
 				file_type = "Rust";
-				let rust_source = RustCodegen::new(args.get_flag("rust:tokio")).codegen(&def);
-				if dry {
-					eprintln!("would've written to the file: {BLUE}{BOLD}{out_file}{NORMAL}, but {RED}--dry-run{NORMAL} was specified");
-					continue
-				}
+				RustCodegen::new(args.get_flag("rust:tokio")).codegen(&def)
 
-				let mut file = File::create(out_file).map_err(|e| e.to_string())?;
-				file.write_all(rust_source.as_bytes()).map_err(|e| e.to_string())?;
+			} else if out_file.ends_with(".json") {
+				file_type = "JSON";
+				converter::convert_full_definition(&def)
+
 			} else {
 				return Err(format!(
 					"can't output a file `{out_file}` - file type not supported\n  \
 					perhaps you wanted to pipe the output from this command into another?"
 				));
+			};
+
+			if dry {
+				eprintln!("would've written to the file: {BLUE}{BOLD}{out_file}{NORMAL}, but {RED}--dry-run{NORMAL} was specified");
+				continue
 			}
+
+			let mut file = File::create(out_file).map_err(|e| e.to_string())?;
+			file.write_all(generated.as_bytes()).map_err(|e| e.to_string())?;
 			eprintln!("{GREEN}{BOLD}generated:{NORMAL} {out_file} {GRAY}({file_type}){NORMAL}");
 		}
 
