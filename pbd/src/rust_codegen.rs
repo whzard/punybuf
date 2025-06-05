@@ -329,7 +329,7 @@ impl RustCodegen {
 				}
 			} else {
 				// Flag fields are an implementation detail and we would like
-				// to hide it (so that the struct is easily constructablt)
+				// to hide it (so that the struct is easily constructable)
 				appendf!(self, "    pub {}: {},\n", field.name, self.gen_reference(&field.value, false));
 			}
 		}
@@ -399,7 +399,7 @@ impl RustCodegen {
 	}
 	fn gen_deserialize_fields(&mut self, fields: &Vec<PBField>, extensible: bool) {
 		for field in fields {
-			appendf!(self, "        let {} = {}::deserialize(r){}?;\n",
+			appendf!(self, "        let field_{} = {}::deserialize(r){}?;\n",
 				field.name, self.gen_reference(&field.value, true),
 				self.maybe_await()
 			);
@@ -409,11 +409,11 @@ impl RustCodegen {
 						continue;
 					}
 					if let Some(val) = &flag.value {
-						appendf!(self, "        let {} = if ({} & (1 << {i})) != 0 {{\n", flag.name, field.name);
+						appendf!(self, "        let flag_{} = if (field_{} & (1 << {i})) != 0 {{\n", flag.name, field.name);
 						appendf!(self, "            Some({}::deserialize(r){}?)\n", self.gen_reference(val, true), self.maybe_await());
 						appendf!(self, "        }} else {{ None }};\n");
 					} else {
-						appendf!(self, "        let {} = ({} & (1 << {i})) != 0;\n", flag.name, field.name);
+						appendf!(self, "        let flag_{} = (field_{} & (1 << {i})) != 0;\n", flag.name, field.name);
 					}
 				}
 			}
@@ -429,12 +429,12 @@ impl RustCodegen {
 					}
 
 					if let Some(val) = &flag.value {
-						appendf!(self, "        let {} = if ({} & (1 << {i})) != 0 {{\n", flag.name, field.name);
+						appendf!(self, "        let flag_{} = if (field_{} & (1 << {i})) != 0 {{\n", flag.name, field.name);
 						appendf!(self, "            Some({}::deserialize(_extension_reader){}?)\n", self.gen_reference(val, true), self.maybe_await());
 						appendf!(self, "        }} else {{ None }};\n");
 
 					} else {
-						appendf!(self, "        let {} = ({} & (1 << {i})) != 0;\n", flag.name, field.name);
+						appendf!(self, "        let flag_{} = (field_{} & (1 << {i})) != 0;\n", flag.name, field.name);
 					}
 				}
 			}
@@ -443,11 +443,11 @@ impl RustCodegen {
 		for field in fields {
 			if let Some(flags) = &field.flags {
 				for flag in flags {
-					appendf!(self, "            {},\n", flag.name);
+					appendf!(self, "            {}: flag_{},\n", flag.name, flag.name);
 				}
 			} else {
 				// We don't want to expose the actual flags value in the struct
-				appendf!(self, "            {},\n", field.name);
+				appendf!(self, "            {}: field_{},\n", field.name, field.name);
 			}
 		}
 		appendf!(self, "        }})\n");

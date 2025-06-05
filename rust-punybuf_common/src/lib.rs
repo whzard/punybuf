@@ -48,7 +48,7 @@ impl PBType for Done {
 }
 
 /// A variable-length integer. The greatest supported value is 1152921573328437375.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct UInt(pub u64);
 impl Into<u64> for UInt {
     fn into(self) -> u64 {
@@ -114,7 +114,7 @@ impl PBType for UInt {
     fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
         let mut uint = self.0;
         if uint < 128 {
-            w.write_all(&uint.to_be_bytes()[0..1])?;
+            w.write_all(&uint.to_be_bytes()[7..8])?;
 
             } else if uint < 16512 {
                 uint -= 128;
