@@ -108,6 +108,12 @@ impl PartialEq<u64> for UInt {
     }
 }
 
+impl PartialOrd<u64> for UInt {
+    fn partial_cmp(&self, other: &u64) -> Option<std::cmp::Ordering> {
+        self.0.partial_cmp(other)
+    }
+}
+
 
 impl PBType for UInt {
     const MIN_SIZE: usize = 1;

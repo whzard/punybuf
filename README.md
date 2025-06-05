@@ -63,4 +63,6 @@ Options:
 - Catch self-referential types during validation
 - Implement binary compatibility checks
 - Finish documentation
+- Decide what to do with [extension flags](./docs/BinaryFormat.md#extending-structs) (bottom part of this section).
 - Support `doc`s inside files
+- Rust codegen: use `u64` instead of `UInt`
