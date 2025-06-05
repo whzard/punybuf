@@ -167,25 +167,25 @@ impl PBType for UInt {
                 // 10xxxxxx
                 buf[0] &= 0b00_111111;
                 r.read_exact(&mut buf[1..2])?;
-                Self(u64::from_be_bytes([buf[1], buf[0], 0, 0, 0, 0, 0, 0]) + 128)
+                Self(u64::from_le_bytes([buf[1], buf[0], 0, 0, 0, 0, 0, 0]) + 128)
 
             } else if first_byte & 0b001_00000 == 0 {
                 // 110xxxxx
                 buf[0] &= 0b000_11111;
                 r.read_exact(&mut buf[1..3])?;
-                Self(u64::from_be_bytes([buf[2], buf[1], buf[0], 0, 0, 0, 0, 0]) + 16512)
+                Self(u64::from_le_bytes([buf[2], buf[1], buf[0], 0, 0, 0, 0, 0]) + 16512)
 
             } else if first_byte & 0b0001_0000 == 0 {
                 // 1110xxxx
                 buf[0] &= 0b0000_1111;
                 r.read_exact(&mut buf[1..5])?;
-                Self(u64::from_be_bytes([buf[4], buf[3], buf[2], buf[1], buf[0], 0, 0, 0]) + 2113664)
+                Self(u64::from_le_bytes([buf[4], buf[3], buf[2], buf[1], buf[0], 0, 0, 0]) + 2113664)
 
             } else {
                 // 1111xxxx
                 buf[0] &= 0b0000_1111;
                 r.read_exact(&mut buf[1..8])?;
-                Self(u64::from_be_bytes([buf[7], buf[6], buf[5], buf[4], buf[3], buf[2], buf[1], buf[0]]) + 68721590400)
+                Self(u64::from_le_bytes([buf[7], buf[6], buf[5], buf[4], buf[3], buf[2], buf[1], buf[0]]) + 68721590400)
             }
         )
     }
