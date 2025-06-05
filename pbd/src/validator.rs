@@ -474,7 +474,7 @@ impl<'d> PunybufValidator<'d> {
 							level: InfoLevel::Info
 						},
 						InfoExplanation {
-							span: owner.get_name().1.clone(),
+							span: flag.name_span.clone(),
 							content: format!("...but contains an `@extension` flag here"),
 							level: InfoLevel::Error
 						},
