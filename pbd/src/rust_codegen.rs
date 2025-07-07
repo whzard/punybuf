@@ -23,6 +23,7 @@ const TO_MAP: &str = r#"
 pub struct RustCodegen {
 	use_tokio: bool,
 	uses_common: bool,
+	gen_docs: bool,
 	buffer: String,
 }
 
@@ -36,10 +37,11 @@ macro_rules! appendf {
 }
 
 impl RustCodegen {
-	pub fn new(use_tokio: bool) -> Self {
+	pub fn new(use_tokio: bool, gen_docs: bool) -> Self {
 		Self {
 			use_tokio,
 			uses_common: true,
+			gen_docs,
 			buffer: String::new(),
 		}
 	}
@@ -218,6 +220,7 @@ impl RustCodegen {
 		appendf!(self, "    }}\n"); // fn new_unchecked()
 		appendf!(self, "}}\n"); // impl */
 
+		appendf!(self, "/// This enum contains all possible commands in the RPC definition.\n");
 		appendf!(self, "pub enum Command {{\n");
 		for cmd in &def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -260,6 +263,7 @@ impl RustCodegen {
 		appendf!(self, "}}\n\n"); // impl Command
 
 
+		appendf!(self, "/// This enum contains all possible command return types in the RPC definition.\n");
 		appendf!(self, "pub enum CommandReturn {{\n");
 		for cmd in &def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -288,6 +292,7 @@ impl RustCodegen {
 		appendf!(self, "    }}\n"); // fn deserialize_return()
 		appendf!(self, "}}\n\n"); // impl CommandReturn
 
+		appendf!(self, "/// This enum contains all possible command error types in the RPC definition.\n");
 		appendf!(self, "pub enum CommandError {{\n");
 		for cmd in &def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -319,23 +324,26 @@ impl RustCodegen {
 		for field in fields {
 			if let Some(flags) = &field.flags {
 				for flag in flags {
-					appendf!(self, "    // Flag of {}\n", field.name);
+					self.gen_doc(&flag.doc, 1);
 					appendf!(self, "    pub {}: ", flag.name);
 					if let Some(val) = &flag.value {
-						appendf!(self, "Option<{}>,\n", self.gen_reference(val, false));
+						appendf!(self, "Option<{}>,", self.gen_reference(val, false));
 					} else {
-						appendf!(self, "bool,\n");
+						appendf!(self, "bool,");
 					}
+					appendf!(self, " // Flag of `{}`\n", field.name);
 				}
 			} else {
 				// Flag fields are an implementation detail and we would like
 				// to hide it (so that the struct is easily constructable)
+				self.gen_doc(&field.doc, 1);
 				appendf!(self, "    pub {}: {},\n", field.name, self.gen_reference(&field.value, false));
 			}
 		}
 	}
 	fn gen_variants(&mut self, variants: &Vec<PBEnumVariant>) {
 		for variant in variants {
+			self.gen_doc(&variant.doc, 1);
 			appendf!(self, "    {}", variant.name);
 			if let Some(val) = &variant.value {
 				appendf!(self, "({})", self.gen_reference(val, false))
@@ -508,11 +516,21 @@ impl RustCodegen {
 			appendf!(self, "            }}\n");
 		}
 	}
+	fn gen_doc(&mut self, doc: &str, indent: usize) {
+		if !self.gen_docs || doc == "" {
+			return;
+		}
+		for line in doc.lines() {
+			appendf!(self, "{}", "    ".repeat(indent));
+			appendf!(self, "/// {}\n", line);
+		}
+	}
 	fn gen_commands(&mut self, def: &PunybufDefinition) {
 		for cmd in &def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
+			self.gen_doc(&cmd.doc, 0);
 			appendf!(self, "pub struct {}", self.get_command_name(cmd));
 			match &cmd.argument {
 				PBCommandArg::None => {
@@ -596,17 +614,20 @@ impl RustCodegen {
 				appendf!(self, "}}\n"); // impl
 			}
 			match tp {
-				PBTypeDef::Alias { alias, .. } => {
+				PBTypeDef::Alias { alias, doc, .. } => {
+					self.gen_doc(doc, 0);
 					appendf!(self, "pub type {} = {};\n", self.get_type_name(tp), self.gen_reference(alias, false));
 					// impls for aliases are generated automatically
 					continue;
 				}
-				PBTypeDef::Struct { fields, .. } => {
+				PBTypeDef::Struct { fields, doc, .. } => {
+					self.gen_doc(doc, 0);
 					appendf!(self, "pub struct {} {{\n", self.get_type_name(tp));
 					self.gen_fields(fields);
 					appendf!(self, "}}\n");
 				}
-				PBTypeDef::Enum { variants, .. } => {
+				PBTypeDef::Enum { variants, doc, .. } => {
+					self.gen_doc(doc, 0);
 					appendf!(self, "pub enum {} {{\n", self.get_type_name(tp));
 					self.gen_variants(variants);
 					appendf!(self, "}}\n");

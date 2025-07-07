@@ -1,10 +1,9 @@
-use std::{fs::{read_to_string, File}, io::Write, path::{Path, PathBuf}, process::exit};
+use std::{fs::{read_to_string, File}, io::Write, path::Path, process::exit};
 use clap::{arg, command};
 
 mod files;
 
 mod lexer;
-use lexer::Token;
 
 mod errors;
 use errors::*;
@@ -42,6 +41,7 @@ fn main() {
 		.arg(arg!(-d --"dry-run" "Do not write anything to the filesystem."))
 		.arg(arg!(--verbose "Be verbose. Will print a lot of unnecessary things."))
 		.arg(arg!(--"no-resolve" "Skip `@resolve`-ing aliases."))
+		.arg(arg!(--"no-docs" "Do not generate doc-comments. Doesn't affect json."))
 		.arg(arg!(--"rust:tokio" "Generate async rust code for tokio. Affects only `.rs` files from --out."))
 		.get_matches()
 	;
@@ -88,7 +88,7 @@ fn main() {
 			let mut file_type = "unknown";
 			let generated = if out_file.ends_with(".rs") {
 				file_type = "Rust";
-				RustCodegen::new(args.get_flag("rust:tokio")).codegen(&def)
+				RustCodegen::new(args.get_flag("rust:tokio"), !args.get_flag("no-docs")).codegen(&def)
 
 			} else if out_file.ends_with(".json") {
 				file_type = "JSON";

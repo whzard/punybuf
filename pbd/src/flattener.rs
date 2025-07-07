@@ -190,6 +190,53 @@ impl PunybufDefinition {
 }
 
 impl PunybufDefinition {
+	pub fn flatten_doc(&self, doc: String) -> String {
+		let mut result = String::with_capacity(doc.len());
+		let mut is_empty_first_line = false;
+		let mut is_skipping_empty_lines = true;
+		let mut remove_whitespace: Option<usize> = None;
+
+		for line in doc.lines() {
+			if is_skipping_empty_lines && line.chars().all(|c| c.is_whitespace()) {
+				is_empty_first_line = true;
+				is_skipping_empty_lines = true;
+				continue;
+			}
+			is_skipping_empty_lines = false;
+			if is_empty_first_line {
+				if let None = remove_whitespace {
+					let mut whitespace_count: usize = 0;
+					for c in line.chars() {
+						if c.is_whitespace() {
+							whitespace_count += 1;
+						} else { break }
+					}
+					remove_whitespace = Some(whitespace_count)
+				}
+
+				let Some(mut whitespace_count) = &remove_whitespace else { continue };
+
+				for (char_index, c) in line.chars().enumerate() {
+					if !c.is_whitespace() {
+						// short-circuit if not a whitespace
+						whitespace_count = 0;
+					}
+					if char_index >= whitespace_count {
+						result.push(c);
+					}
+				}
+
+			} else {
+				result.push_str(line.trim());
+			}
+			result.push('\n');
+		}
+		//result.pop(); // trailing newline
+		while result.chars().next_back() == Some('\n') {
+			result.pop();
+		}
+		result
+	}
 	pub fn flatten_reference(&mut self, refr: ValueReference) -> PBTypeRef {
 		match refr {
 			ValueReference::Reference { name, name_span, generics, generic_span, .. } => {
@@ -229,14 +276,14 @@ impl PunybufDefinition {
 			PBFieldFlag {
 				name: f.name, name_span: f.name_span,
 				value: f.value.map(|rf| self.flatten_reference(rf)),
-				attrs: f.attrs, doc: f.doc
+				attrs: f.attrs, doc: self.flatten_doc(f.doc)
 			}
 		}).collect());
 
 		PBField {
 			name: field.name, name_span: field.name_span,
 			value: self.flatten_reference(field.value),
-			flags, attrs: field.attrs, doc: field.doc
+			flags, attrs: field.attrs, doc: self.flatten_doc(field.doc)
 		}
 	}
 	pub fn flatten_enum_variant(&mut self, ev: EnumVariant) -> PBEnumVariant {
@@ -244,7 +291,7 @@ impl PunybufDefinition {
 			name: ev.name, name_span: ev.name_span,
 			discriminant: ev.discriminant,
 			value: ev.value.map(|rf| self.flatten_reference(rf)),
-			attrs: ev.attrs, doc: ev.doc
+			attrs: ev.attrs, doc: self.flatten_doc(ev.doc)
 		}
 	}
 	pub fn flatten_value_enum_variant(&mut self, vev: ValueEnumVariant) -> PBEnumVariant {
@@ -254,7 +301,7 @@ impl PunybufDefinition {
 			name, name_span,
 			discriminant: vev.discriminant,
 			value: Some(self.flatten_reference(vev.value)),
-			attrs: vev.attrs, doc: vev.doc
+			attrs: vev.attrs, doc: self.flatten_doc(vev.doc)
 		}
 	}
 	pub fn flatten_flexible_decl(
@@ -279,7 +326,7 @@ impl PunybufDefinition {
 				let variants = variants.into_iter().map(|ev| self.flatten_enum_variant(ev)).collect();
 				self.types.push(PBTypeDef::Enum {
 					name, name_span,
-					doc, attrs,
+					doc: self.flatten_doc(doc), attrs,
 					generic_params, generic_span,
 					variants, layer,
 					inline_owner,
@@ -293,7 +340,7 @@ impl PunybufDefinition {
 				let fields = fields.into_iter().map(|f| self.flatten_field(f)).collect();
 				self.types.push(PBTypeDef::Struct {
 					name, name_span,
-					doc, attrs,
+					doc: self.flatten_doc(doc), attrs,
 					generic_params, generic_span,
 					fields, layer,
 					inline_owner,
@@ -307,7 +354,7 @@ impl PunybufDefinition {
 				let variants = variants.into_iter().map(|ev| self.flatten_value_enum_variant(ev)).collect();
 				self.types.push(PBTypeDef::Enum {
 					name, name_span,
-					doc, attrs,
+					doc: self.flatten_doc(doc), attrs,
 					generic_params, generic_span,
 					variants, layer,
 					inline_owner,
@@ -361,7 +408,7 @@ pub fn flatten(decls: Vec<Declaration>, includes_common: bool) -> Result<Punybuf
 					name_span: decl.symbol_span,
 					argument: pb_arg,
 					attrs: decl.attrs,
-					doc: decl.doc,
+					doc: def.flatten_doc(decl.doc),
 					argument_span, layer,
 					ret, err, err_span,
 					command_id, is_highest_layer: false
@@ -372,7 +419,7 @@ pub fn flatten(decls: Vec<Declaration>, includes_common: bool) -> Result<Punybuf
 				def.types.push(PBTypeDef::Alias {
 					name: decl.symbol,
 					name_span: decl.symbol_span,
-					doc: decl.doc,
+					doc: def.flatten_doc(decl.doc),
 					attrs: decl.attrs,
 					layer, generic_params,
 					generic_span, alias,
