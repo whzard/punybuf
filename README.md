@@ -41,11 +41,12 @@ Arguments:
 Options:
   -q, --quiet          Do not print JSON into stdout
   -l, --loud           Do print JSON into stdout, overrides -q
-  -o, --out <OUT>...   Output - only .rs, .json files supported. Implies -q
-  -c, --compat <JSON>  (WIP) Check binary compatibility with the previous version (json file). If compatible, overwrite the file, otherwise, error.
+  -o, --out <OUT>      Output - only .rs, .json files supported. Implies -q. Allows multiple occurrences.
+  -c, --compat <JSON>  Check binary compatibility with the previous version (json file). Aborts if they are not compatible.
   -d, --dry-run        Do not write anything to the filesystem.
       --verbose        Be verbose. Will print a lot of unnecessary things.
       --no-resolve     Skip `@resolve`-ing aliases.
+      --no-docs        Do not generate doc-comments. Doesn't affect json.
       --rust:tokio     Generate async rust code for tokio. Affects only `.rs` files from --out.
   -h, --help           Print help
   -V, --version        Print version
