@@ -1,4 +1,4 @@
-use std::{fmt::{Debug, Display}, iter::Peekable, rc::Rc, str::Chars};
+use std::{fmt::{Debug, Display}, iter::Peekable, rc::Rc};
 
 use crate::errors::{parser_err, ExtendedErrorExplanation, PunybufError};
 
@@ -65,22 +65,6 @@ impl Span {
 			loc_end: Loc::zero(),
 			file_name: "".to_string(),
 			file_contents: Rc::new("".to_string())
-		}
-	}
-	pub fn implicit_layer_definition() -> Self {
-		Self {
-			loc_start: Loc::zero(),
-			loc_end: Loc::zero(),
-			file_name: "<implicit layer definition>".to_string(),
-			file_contents: Rc::new("".to_string())
-		}
-	}
-	pub fn full_line(all: &str, file_name: String) -> Self {
-		Self {
-			loc_start: Loc::zero(),
-			loc_end: Loc { col: all.len(), row: 0 },
-			file_name,
-			file_contents: Rc::new(all.to_string())
 		}
 	}
 	/// Produces a new span which spans from self until the `rhs`
@@ -216,6 +200,15 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 			includes_common: false,
 		}
 	}
+	fn implicit_layer_definition(&self) -> Span {
+		const IMPLICIT_LAYER_DEFINITION: &str = "<implicit layer definition>";
+		Span {
+			loc_start: Loc { row: self.current_loc.row + 1, col: 0 },
+			loc_end: Loc { row: self.current_loc.row + 1, col: IMPLICIT_LAYER_DEFINITION.len() },
+			file_name: self.file_name.into(),
+			file_contents: Rc::new("\n".repeat(self.current_loc.row + 1) + IMPLICIT_LAYER_DEFINITION)
+		}
+	}
 	pub fn lex(&mut self) -> Result<Vec<Token>, PunybufError> {
 		self.includes_common = false;
 
@@ -230,15 +223,15 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 		// from a lower layer references a type from a higher layer)
 		tokens.push(Token {
 			data: TokenData::LayerKeyword,
-			span: Span::implicit_layer_definition()
+			span: self.implicit_layer_definition()
 		});
 		tokens.push(Token {
 			data: TokenData::Numeric(0),
-			span: Span::implicit_layer_definition()
+			span: self.implicit_layer_definition()
 		});
 		tokens.push(Token {
 			data: TokenData::Colon,
-			span: Span::implicit_layer_definition()
+			span: self.implicit_layer_definition()
 		});
 
 		return Ok(tokens);
