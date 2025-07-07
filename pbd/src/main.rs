@@ -1,5 +1,5 @@
 use std::{fs::{read_to_string, File}, io::Write, path::Path, process::exit};
-use clap::{arg, command};
+use clap::{arg, command, ArgAction};
 
 mod files;
 
@@ -33,10 +33,10 @@ fn main() {
 		.arg(arg!(<INPUT> "The .pbd definition file").required(true))
 		.arg(arg!(-q --quiet "Do not print JSON into stdout"))
 		.arg(arg!(-l --loud "Do print JSON into stdout, overrides -q"))
-		.arg(arg!(-o --out... <OUT> "Output - only .rs, .json files supported. Implies -q").num_args(1..))
-		.arg(arg!(-c --compat <JSON> 
+		.arg(arg!(-o --out <OUT> "Output - only .rs, .json files supported. Implies -q. Allows multiple occurrences.").action(ArgAction::Append))
+		.arg(arg!(-c --compat <JSON>
 			"Check binary compatibility with the previous version (json file). \
-			If compatible, overwrite the file, otherwise, error."
+			Aborts if they are not compatible."
 		))
 		.arg(arg!(-d --"dry-run" "Do not write anything to the filesystem."))
 		.arg(arg!(--verbose "Be verbose. Will print a lot of unnecessary things."))
