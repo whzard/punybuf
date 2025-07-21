@@ -234,7 +234,7 @@ impl RustCodegen {
 		appendf!(self, "    pub {} deserialize_command<R: {}>(r: &mut R) -> Result<Self, io::Error> {{\n", self.get_fn(), self.read());
 		appendf!(self, "        let mut id = [0; 4];\n");
 		appendf!(self, "        r.{};\n", self.read_exact("&mut id"));
-		appendf!(self, "        let id = u32::from_le_bytes(id);\n");
+		appendf!(self, "        let id = u32::from_be_bytes(id);\n");
 		appendf!(self, "        Ok(match id {{\n");
 		for cmd in &def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
