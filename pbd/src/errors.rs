@@ -33,23 +33,13 @@ impl Display for PunybufError {
 	}
 }
 
-macro_rules! error_tk {
-	($token:ident, $string:literal, $($rpt:expr),+) => {
-		Err(PunybufError {
-			span: $token.span,
-			error: format!($string, $($rpt),+),
-			explanation: None
-		})
-	};
-}
-
-
 pub const RED: &str = "\x1b[91m";
 pub const BLUE: &str = "\x1b[94m";
 pub const YELLOW: &str = "\x1b[93m";
 pub const NORMAL: &str = "\x1b[0m";
 pub const GRAY: &str = "\x1b[30m";
 pub const GREEN: &str = "\x1b[32m";
+#[allow(unused)]
 pub const INTENSE: &str = "\x1b[97m";
 pub const BOLD: &str = "\x1b[1m";
 
@@ -129,6 +119,7 @@ pub struct ExtendedErrorExplanation {
 	pub after_error: Vec<InfoExplanation>,
 	pub explain_error: bool
 }
+#[allow(unused)]
 impl ExtendedErrorExplanation {
 	pub fn empty() -> Self {
 		Self {

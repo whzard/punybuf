@@ -123,7 +123,7 @@ impl<'d> PunybufValidator<'d> {
 				};
 				Ok(n)
 			}
-			PBTypeDef::Alias { attrs, alias, generic_params: generic_params, generic_span, .. } => {
+			PBTypeDef::Alias { attrs, alias, generic_params, generic_span, .. } => {
 				if let Some(n) = attrs.get(&"@flags".to_string()) {
 					let Some(Ok(n)) = n.as_ref().map(|x| x.trim().parse::<usize>()) else {
 						return Err(FlagsAttrError::Other(

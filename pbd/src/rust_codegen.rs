@@ -73,7 +73,7 @@ impl RustCodegen {
 			format!("read_exact({})?", arg)
 		}
 	}
-	/// Gets a fully qualified reference name
+	/* /// Gets a fully qualified reference name
 	fn get_ref(&self, refr: &PBTypeRef) -> String {
 		if self.uses_common {
 			match refr.reference.as_str() {
@@ -92,7 +92,7 @@ impl RustCodegen {
 		} else {
 			format!("{}Layer{}", refr.reference, refr.resolved_layer.unwrap())
 		}
-	}
+	} */
 	/// Generates a reference, including generics
 	fn gen_reference(&self, refr: &PBTypeRef, turbofish: bool) -> String {
 		if self.uses_common {

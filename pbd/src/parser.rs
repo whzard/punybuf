@@ -6,6 +6,7 @@ use crate::errors::{parser_err, pb_err, ExtendedErrorExplanation, InfoExplanatio
 use crate::lexer::{Span, Token, TokenData};
 
 #[derive(Debug)]
+#[allow(unused)]
 pub enum ValueReference {
 	Reference {
 		name: String,
@@ -36,6 +37,7 @@ impl ValueReference {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 pub struct FieldFlag {
 	pub name: String,
 	pub name_span: Span,
@@ -45,6 +47,7 @@ pub struct FieldFlag {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 pub struct Field {
 	pub name: String,
 	pub name_span: Span,
@@ -55,6 +58,7 @@ pub struct Field {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 pub struct EnumVariant {
 	pub name: String,
 	pub name_span: Span,
@@ -65,6 +69,7 @@ pub struct EnumVariant {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 pub struct ValueEnumVariant {
 	pub discriminant: u8,
 	pub value: ValueReference,
@@ -73,6 +78,7 @@ pub struct ValueEnumVariant {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 pub enum FlexibleDeclarationValue {
 	StructDeclaration {
 		inline: bool,
@@ -92,6 +98,7 @@ pub enum FlexibleDeclarationValue {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 pub enum CommandArgument {
 	None,
 	Reference(ValueReference),
@@ -101,6 +108,7 @@ pub enum CommandArgument {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 pub enum DeclarationValue {
 	Flexible {
 		val: FlexibleDeclarationValue,
@@ -126,6 +134,7 @@ pub enum DeclarationValue {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 pub struct Declaration {
 	pub symbol: String,
 	pub symbol_span: Span,
