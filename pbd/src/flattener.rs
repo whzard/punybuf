@@ -6,6 +6,7 @@ use crate::{errors::{parser_err, ExtendedErrorExplanation, PunybufError}, lexer:
 pub const PB_CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_CKSUM);
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub struct PBTypeRef {
 	pub reference: String,
 	pub reference_span: Span,
@@ -26,6 +27,7 @@ pub struct PBTypeRef {
 }
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub struct PBFieldFlag {
 	pub name: String,
 	pub name_span: Span,
@@ -35,6 +37,7 @@ pub struct PBFieldFlag {
 }
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub struct PBField {
 	pub name: String,
 	pub name_span: Span,
@@ -45,6 +48,7 @@ pub struct PBField {
 }
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub struct PBEnumVariant {
 	pub name: String,
 	pub name_span: Span,
@@ -55,6 +59,7 @@ pub struct PBEnumVariant {
 }
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub enum PBTypeDef {
 	Struct {
 		name: String,
@@ -146,6 +151,7 @@ impl PBTypeDef {
 }
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub enum PBCommandArg {
 	None,
 	Ref(PBTypeRef),
@@ -155,6 +161,7 @@ pub enum PBCommandArg {
 }
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub struct PBCommandDef {
 	pub name: String,
 	pub name_span: Span,
@@ -171,6 +178,7 @@ pub struct PBCommandDef {
 }
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub struct PunybufDefinition {
 	pub types: Vec<PBTypeDef>,
 	pub commands: Vec<PBCommandDef>,
