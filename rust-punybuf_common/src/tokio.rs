@@ -2,21 +2,19 @@ use std::io::{self, Error};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{const_unwrap, from_utf8_lossy_owned};
+pub use crate::{UInt, Done, Void, Bytes};
 
 const MAX_BYTES_LENGTH: usize = const_unwrap!(usize::from_str_radix(env!("PUNYBUF_MAX_BYTES_LENGTH"), 10));
 const MAX_ARRAY_LENGTH: usize = const_unwrap!(usize::from_str_radix(env!("PUNYBUF_MAX_ARRAY_LENGTH"), 10));
 
 /// All Punybuf types implement this trait.
-pub trait PBType: Sized + Send + Sync {
+pub trait PBType: Send + Sync {
     const MIN_SIZE: usize;
+    fn attributes() -> &'static [(&'static str, Option<&'static str>)] { &[] }
     fn serialize<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> impl std::future::Future<Output = io::Result<()>> + Send;
-    fn deserialize<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> impl std::future::Future<Output = io::Result<Self>> + Send;
+    fn deserialize<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> impl std::future::Future<Output = io::Result<Self>> + Send where Self: Sized;
 }
 
-/// An empty type, used as a return type for a command that doesn't need to return
-/// anything, but needs to indicate that it's been recieved or that the requested
-/// operation finished processing.
-pub struct Done {}
 impl PBType for Done {
     const MIN_SIZE: usize = 0;
     async fn serialize<W: AsyncWriteExt + Unpin + Send>(&self, _w: &mut W) -> io::Result<()> {
@@ -27,26 +25,13 @@ impl PBType for Done {
     }
 }
 
-/// A variable-length integer. The greatest supported value is 1152921573328437375.
-pub struct UInt(pub u64);
-impl Into<u64> for UInt {
-    fn into(self) -> u64 {
-        self.0
+impl PBType for Void {
+    const MIN_SIZE: usize = 0;
+    async fn serialize<W: AsyncWriteExt + Unpin + Send>(&self, _: &mut W) -> io::Result<()> {
+        Ok(())
     }
-}
-impl Into<usize> for UInt {
-    fn into(self) -> usize {
-        self.0 as usize
-    }
-}
-impl From<u64> for UInt {
-    fn from(value: u64) -> Self {
-        Self(value as u64)
-    }
-}
-impl From<usize> for UInt {
-    fn from(value: usize) -> Self {
-        Self(value as u64)
+    async fn deserialize<R: AsyncReadExt + Unpin + Send>(_: &mut R) -> io::Result<Self> {
+        Ok(())
     }
 }
 
@@ -240,9 +225,6 @@ impl<T: PBType> PBType for Vec<T> {
     }
 }
 
-/// A convenience type wrapping a `Vec<u8>`, for more efficient (de)serialization.
-pub struct Bytes(pub Vec<u8>);
-
 impl PBType for Bytes {
     const MIN_SIZE: usize = 1;
     async fn serialize<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> io::Result<()> {
@@ -262,12 +244,6 @@ impl PBType for Bytes {
         taken.read_to_end(&mut this).await?;
 
         Ok(Self(this))
-    }
-}
-
-impl Into<Vec<u8>> for Bytes {
-    fn into(self) -> Vec<u8> {
-        self.0
     }
 }
 
@@ -302,6 +278,12 @@ pub trait PBCommand: Sized + Send + Sync {
     type Return: PBType;
 
     fn id() -> u32;
+
+
+    fn attributes() -> &'static [(&'static str, Option<&'static str>)] { &[] }
+    fn required_capability() -> Option<&'static str> {
+        None
+    }
 
     /// Convenience method to get the id of the command. Calls `id()` internally
     fn get_id(&self) -> u32 {

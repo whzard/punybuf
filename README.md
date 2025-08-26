@@ -63,6 +63,7 @@ Options:
 - Add native support for more languages
 - Catch self-referential types during validation
 - Implement binary compatibility checks
+- Document capabilities
 - Finish documentation
 - Decide what to do with [extension flags](./docs/BinaryFormat.md#extending-structs) (bottom part of this section).
 - Support `doc`s inside files

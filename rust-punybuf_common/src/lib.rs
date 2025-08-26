@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, io::{self, Error, Read, Write}, ops::*};
+use std::{borrow::Cow, collections::HashMap, fmt::{Debug, Display}, io::{self, Error, Read, Write}, ops::*};
 
 mod const_macro;
 const MAX_BYTES_LENGTH: usize = const_unwrap!(usize::from_str_radix(env!("PUNYBUF_MAX_BYTES_LENGTH"), 10));
@@ -8,10 +8,23 @@ const MAX_ARRAY_LENGTH: usize = const_unwrap!(usize::from_str_radix(env!("PUNYBU
 pub mod tokio;
 
 /// All Punybuf types implement this trait.
-pub trait PBType: Sized {
+pub trait PBType {
     const MIN_SIZE: usize;
+    fn attributes() -> &'static [(&'static str, Option<&'static str>)] { &[] }
     fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()>;
-    fn deserialize<R: Read>(r: &mut R) -> io::Result<Self>;
+    fn deserialize<R: Read>(r: &mut R) -> io::Result<Self> where Self: Sized;
+}
+
+pub type Void = ();
+
+impl PBType for Void {
+    const MIN_SIZE: usize = 0;
+    fn serialize<W: Write>(&self, _: &mut W) -> io::Result<()> {
+        Ok(())
+    }
+    fn deserialize<R: Read>(_: &mut R) -> io::Result<Self> where Self: Sized {
+        Ok(())
+    }
 }
 
 pub struct DuplicateKeysFound;
@@ -35,6 +48,7 @@ pub trait HashMapConvertible<K, V>: Sized {
 /// An empty type, used as a return type for a command that doesn't need to return
 /// anything, but needs to indicate that it's been recieved or that the requested
 /// operation finished processing.
+#[derive(Debug)]
 pub struct Done {}
 
 impl PBType for Done {
@@ -48,7 +62,7 @@ impl PBType for Done {
 }
 
 /// A variable-length integer. The greatest supported value is 1152921573328437375.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UInt(pub u64);
 impl Into<u64> for UInt {
     fn into(self) -> u64 {
@@ -73,6 +87,18 @@ impl From<usize> for UInt {
 impl From<i32> for UInt {
     fn from(value: i32) -> Self {
         Self(value as u64)
+    }
+}
+
+impl Debug for UInt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Display for UInt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -306,6 +332,7 @@ impl<T: PBType> PBType for Vec<T> {
 }
 
 /// A convenience type wrapping a `Vec<u8>`, for more efficient (de)serialization.
+#[derive(Debug)]
 pub struct Bytes(pub Vec<u8>);
 
 impl PBType for Bytes {
@@ -333,6 +360,12 @@ impl PBType for Bytes {
 impl Into<Vec<u8>> for Bytes {
     fn into(self) -> Vec<u8> {
         self.0
+    }
+}
+
+impl From<Vec<u8>> for Bytes {
+    fn from(value: Vec<u8>) -> Self {
+        Self(value)
     }
 }
 
@@ -373,12 +406,17 @@ impl PBType for String {
     }
 }
 
-pub trait PBCommand: Sized {
+pub trait PBCommand {
     const MIN_SIZE: usize;
     type Error: PBType;
     type Return: PBType;
 
     fn id() -> u32;
+
+    fn attributes() -> &'static [(&'static str, Option<&'static str>)] { &[] }
+    fn required_capability() -> Option<&'static str> {
+        None
+    }
 
     /// Convenience method to get the id of the command. Calls `id()` internally
     fn get_id(&self) -> u32 {
@@ -390,7 +428,7 @@ pub trait PBCommand: Sized {
 
     /// Does **not** read the command ID.  
     /// If you need to read the command ID, use `CommandID::deserialize`
-    fn deserialize<R: Read>(r: &mut R) -> io::Result<Self>;
+    fn deserialize<R: Read>(r: &mut R) -> io::Result<Self> where Self: Sized;
 
     /// Writes both the command ID and the argument body
     fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
@@ -404,4 +442,27 @@ pub trait PBCommand: Sized {
     fn deserialize_error<R: Read>(&self, r: &mut R) -> io::Result<Self::Error> {
         Self::Error::deserialize(r)
     }
+}
+
+mod meow;
+
+#[test]
+fn test() {
+    let init = meow::probePeer {
+        peer_ip: std::net::Ipv4Addr::LOCALHOST.to_bits(),
+    };
+
+    let mut bytes: Vec<u8> = Vec::new();
+
+    init.serialize(&mut bytes).unwrap();
+
+    let n = meow::Command::deserialize_command(&mut &bytes[..]).unwrap();
+
+    println!("{:?}", n);
+    println!("{:?}", bytes);
+    println!("{:?}", n.required_capability());
+
+    assert_eq!(0, 1);
+
+    assert_eq!(meow::initialize::attributes(), &[("@.serverBound", None)]);
 }

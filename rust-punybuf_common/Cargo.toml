@@ -3,7 +3,7 @@ name = "punybuf_common"
 description = "A crate for the common Punybuf types."
 repository = "https://github.com/whzard/punybuf"
 categories = ["encoding"]
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 license = "MIT"
 
