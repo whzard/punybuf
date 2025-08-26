@@ -221,6 +221,7 @@ impl RustCodegen {
 		appendf!(self, "}}\n"); // impl */
 
 		appendf!(self, "/// This enum contains all possible commands in the RPC definition.\n");
+		appendf!(self, "#[derive(Debug)]\n");
 		appendf!(self, "pub enum Command {{\n");
 		for cmd in &def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -260,10 +261,33 @@ impl RustCodegen {
 		}
 		appendf!(self, "        }}\n"); // match
 		appendf!(self, "    }}\n"); // fn id()
+
+		appendf!(self, "    pub fn attributes(&self) -> &'static [(&'static str, Option<&'static str>)] {{\n");
+		appendf!(self, "        match self {{\n");
+		for cmd in &def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self, "            Self::{}(_) => {}::attributes(),\n", self.get_command_name(cmd), self.get_command_name(cmd));
+		}
+		appendf!(self, "        }}\n"); // match
+		appendf!(self, "    }}\n"); // fn attributes()
+
+		appendf!(self, "    pub fn required_capability(&self) -> Option<&'static str> {{\n");
+		appendf!(self, "        match self {{\n");
+		for cmd in &def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self, "            Self::{}(_) => {}::required_capability(),\n", self.get_command_name(cmd), self.get_command_name(cmd));
+		}
+		appendf!(self, "        }}\n"); // match
+		appendf!(self, "    }}\n"); // fn required_capability()
 		appendf!(self, "}}\n\n"); // impl Command
 
 
 		appendf!(self, "/// This enum contains all possible command return types in the RPC definition.\n");
+		appendf!(self, "#[derive(Debug)]\n");
 		appendf!(self, "pub enum CommandReturn {{\n");
 		for cmd in &def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -293,6 +317,7 @@ impl RustCodegen {
 		appendf!(self, "}}\n\n"); // impl CommandReturn
 
 		appendf!(self, "/// This enum contains all possible command error types in the RPC definition.\n");
+		appendf!(self, "#[derive(Debug)]\n");
 		appendf!(self, "pub enum CommandError {{\n");
 		for cmd in &def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -531,6 +556,7 @@ impl RustCodegen {
 				continue;
 			}
 			self.gen_doc(&cmd.doc, 0);
+			appendf!(self, "#[derive(Debug)]\n");
 			appendf!(self, "pub struct {}", self.get_command_name(cmd));
 			match &cmd.argument {
 				PBCommandArg::None => {
@@ -554,6 +580,18 @@ impl RustCodegen {
 			appendf!(self, "    type Error = {};\n", self.get_command_err(cmd));
 			appendf!(self, "    type Return = {};\n", self.gen_reference(&cmd.ret, false));
 			appendf!(self, "    fn id() -> u32 {{ {} }}\n", cmd.command_id);
+			if !cmd.attrs.is_empty() {
+				appendf!(self, "    fn attributes() -> &'static [(&'static str, Option<&'static str>)] {{ &[\n");
+				for (name, value) in &cmd.attrs {
+					appendf!(self, "        ({name:?}, {value:?}),\n");
+				}
+				appendf!(self, "    ] }}\n"); // attributes
+			}
+			if let Some(Some(cap)) = cmd.attrs.get("@capability") {
+				appendf!(self, "    fn required_capability() -> Option<&'static str> {{ \n");
+				appendf!(self, "        Some(&{cap:?})\n");
+				appendf!(self, "    }}\n"); // required_capability
+			}
 			appendf!(self, "    {} serialize_self<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
 			match &cmd.argument {
 				PBCommandArg::None => {},
@@ -575,6 +613,7 @@ impl RustCodegen {
 			appendf!(self, "    }}\n"); // deserialize
 			appendf!(self, "}}\n\n"); // impl PBCommand
 
+			appendf!(self, "#[derive(Debug)]\n");
 			appendf!(self, "pub enum {} {{\n", self.get_command_err(cmd));
 			appendf!(self, "    UnexpectedError(String),\n");
 			self.gen_variants(&cmd.err);
@@ -622,12 +661,14 @@ impl RustCodegen {
 				}
 				PBTypeDef::Struct { fields, doc, .. } => {
 					self.gen_doc(doc, 0);
+					appendf!(self, "#[derive(Debug)]\n");
 					appendf!(self, "pub struct {} {{\n", self.get_type_name(tp));
 					self.gen_fields(fields);
 					appendf!(self, "}}\n");
 				}
 				PBTypeDef::Enum { variants, doc, .. } => {
 					self.gen_doc(doc, 0);
+					appendf!(self, "#[derive(Debug)]\n");
 					appendf!(self, "pub enum {} {{\n", self.get_type_name(tp));
 					self.gen_variants(variants);
 					appendf!(self, "}}\n");
@@ -635,6 +676,13 @@ impl RustCodegen {
 			}
 			appendf!(self, "impl{} PBType for {} {{\n", self.get_type_impl_generics(tp), self.get_type_name(tp));
 			appendf!(self, "    const MIN_SIZE: usize = 0; // TODO\n");
+			if !tp.get_attrs().is_empty() {
+				appendf!(self, "    fn attributes() -> &'static [(&'static str, Option<&'static str>)] {{ &[\n");
+				for (name, value) in tp.get_attrs() {
+					appendf!(self, "        ({name:?}, {value:?}),\n");
+				}
+				appendf!(self, "    ] }}\n"); // fn attributes
+			}
 			appendf!(self, "    {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
 			match tp {
 				PBTypeDef::Struct { fields, attrs, .. } => {

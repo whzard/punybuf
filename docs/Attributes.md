@@ -34,6 +34,11 @@ Mark this flag or this variant as an extension. [Extensions](Language.md#extensi
 Conflicts with [`@sealed`](#sealed) on the parent struct.  
 Invalid when no [`@default`](#default) variant exists on the enum.
 
+## `@capability(name)`
+> applied to **commands**, is informative, but may be checked by the RPC implementation
+
+Mark this command only available when a capability with the name `name` is available. The way the available capabilities are made known is RPC-implementaition defined.
+
 ## `@sealed`
 > applied to **structs** or **commands** by the **implementation**, checked by the compiler
 
