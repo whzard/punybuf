@@ -443,26 +443,3 @@ pub trait PBCommand {
         Self::Error::deserialize(r)
     }
 }
-
-mod meow;
-
-#[test]
-fn test() {
-    let init = meow::probePeer {
-        peer_ip: std::net::Ipv4Addr::LOCALHOST.to_bits(),
-    };
-
-    let mut bytes: Vec<u8> = Vec::new();
-
-    init.serialize(&mut bytes).unwrap();
-
-    let n = meow::Command::deserialize_command(&mut &bytes[..]).unwrap();
-
-    println!("{:?}", n);
-    println!("{:?}", bytes);
-    println!("{:?}", n.required_capability());
-
-    assert_eq!(0, 1);
-
-    assert_eq!(meow::initialize::attributes(), &[("@.serverBound", None)]);
-}
