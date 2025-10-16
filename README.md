@@ -67,4 +67,5 @@ Options:
 - Finish documentation
 - Decide what to do with [extension flags](./docs/BinaryFormat.md#extending-structs) (bottom part of this section).
 - Support `doc`s inside files
+- Rust codegen: restructure to (optionally?) use references instead of owned values
 - Rust codegen: use `u64` instead of `UInt`

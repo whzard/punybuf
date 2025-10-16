@@ -20,6 +20,28 @@ const TO_MAP: &str = r#"
     }
 "#;
 
+const HASH_MAP_CONVERTIBLE: &str = r#"
+// Because of Rust's orphan rules, we can't put this in the punybuf_common crate.
+
+pub struct DuplicateKeysFound;
+pub trait HashMapConvertible<K, V>: Sized {
+    /// Converts the value to a `HashMap`, overriding duplicate keys.  
+    /// Returns the resulting hashmap and a boolean indicating whether any duplicate keys were found
+    fn to_map_allow_duplicates(self) -> (std::collections::HashMap<K, V>, bool);
+
+    /// Returns an error if there were any duplicate keys in the Map
+    fn try_to_map(self) -> Result<std::collections::HashMap<K, V>, DuplicateKeysFound> {
+        let (map, duplicates_found) = self.to_map_allow_duplicates();
+        if !duplicates_found {
+            Ok(map)
+        } else {
+            Err(DuplicateKeysFound)
+        }
+    }
+    fn from_map(map: std::collections::HashMap<K, V>) -> Self;
+}
+"#;
+
 pub struct RustCodegen {
 	use_tokio: bool,
 	uses_common: bool,
@@ -592,6 +614,9 @@ impl RustCodegen {
 				appendf!(self, "        Some(&{cap:?})\n");
 				appendf!(self, "    }}\n"); // required_capability
 			}
+			if cmd.ret.reference == "Void" {
+				appendf!(self, "    fn is_void() -> bool {{ true }}\n");
+			}
 			appendf!(self, "    {} serialize_self<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
 			match &cmd.argument {
 				PBCommandArg::None => {},
@@ -638,6 +663,7 @@ impl RustCodegen {
 		}
 	}
 	fn gen_types(&mut self, def: &PunybufDefinition) {
+		let mut should_include_hash_map_convertible = false;
 		for tp in &def.types {
 			if
 				tp.get_attrs().contains_key("@builtin") ||
@@ -647,7 +673,8 @@ impl RustCodegen {
 				continue;
 			}
 			if tp.get_attrs().contains_key("@map_convertible") {
-				appendf!(self, "impl<K: PBType + std::hash::Hash + Eq, V: PBType> punybuf_common::HashMapConvertible<K, V> for {} {{", self.get_type_name(tp));
+				appendf!(self, "impl<K: PBType + std::hash::Hash + Eq, V: PBType> HashMapConvertible<K, V> for {} {{", self.get_type_name(tp));
+				should_include_hash_map_convertible = true;
 				// TO_MAP contains a leading newline
 				appendf!(self, "{}", TO_MAP);
 				appendf!(self, "}}\n"); // impl
@@ -713,6 +740,11 @@ impl RustCodegen {
 			}
 			appendf!(self, "    }}\n"); // fn deserialize
 			appendf!(self, "}}\n\n"); // impl PBType
+		}
+		if should_include_hash_map_convertible {
+			// HACK: Because of Rust's orphan rules, we can't put this in the punybuf_common crate.
+			appendf!(self, "{}", HASH_MAP_CONVERTIBLE);
+			appendf!(self, "\n\n");
 		}
 	}
 	pub fn codegen(mut self, def: &PunybufDefinition) -> String {

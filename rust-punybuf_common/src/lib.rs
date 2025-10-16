@@ -418,6 +418,9 @@ pub trait PBCommand {
         None
     }
 
+    /// Whether the `Return` type is `Void`
+    fn is_void() -> bool { false }
+
     /// Convenience method to get the id of the command. Calls `id()` internally
     fn get_id(&self) -> u32 {
         Self::id()
