@@ -243,7 +243,7 @@ impl RustCodegen {
 		appendf!(self, "}}\n"); // impl */
 
 		appendf!(self, "/// This enum contains all possible commands in the RPC definition.\n");
-		appendf!(self, "#[derive(Debug)]\n");
+		appendf!(self, "#[derive(Debug, Clone)]\n");
 		appendf!(self, "pub enum Command {{\n");
 		for cmd in &def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -309,7 +309,7 @@ impl RustCodegen {
 
 
 		appendf!(self, "/// This enum contains all possible command return types in the RPC definition.\n");
-		appendf!(self, "#[derive(Debug)]\n");
+		appendf!(self, "#[derive(Debug, Clone)]\n");
 		appendf!(self, "pub enum CommandReturn {{\n");
 		for cmd in &def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -339,7 +339,7 @@ impl RustCodegen {
 		appendf!(self, "}}\n\n"); // impl CommandReturn
 
 		appendf!(self, "/// This enum contains all possible command error types in the RPC definition.\n");
-		appendf!(self, "#[derive(Debug)]\n");
+		appendf!(self, "#[derive(Debug, Clone)]\n");
 		appendf!(self, "pub enum CommandError {{\n");
 		for cmd in &def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -578,7 +578,7 @@ impl RustCodegen {
 				continue;
 			}
 			self.gen_doc(&cmd.doc, 0);
-			appendf!(self, "#[derive(Debug)]\n");
+			appendf!(self, "#[derive(Debug, Clone)]\n");
 			appendf!(self, "pub struct {}", self.get_command_name(cmd));
 			match &cmd.argument {
 				PBCommandArg::None => {
@@ -629,7 +629,9 @@ impl RustCodegen {
 			appendf!(self, "    }}\n"); // serialize_self
 			appendf!(self, "    {} deserialize<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 			match &cmd.argument {
-				PBCommandArg::None => {},
+				PBCommandArg::None => {
+					appendf!(self, "        Ok(Self)\n");
+				},
 				PBCommandArg::Ref(refr) => {
 					appendf!(self, "        Self({}::deserialize(r){}?)\n", self.gen_reference(refr, true), self.maybe_await());
 				},
@@ -638,7 +640,7 @@ impl RustCodegen {
 			appendf!(self, "    }}\n"); // deserialize
 			appendf!(self, "}}\n\n"); // impl PBCommand
 
-			appendf!(self, "#[derive(Debug)]\n");
+			appendf!(self, "#[derive(Debug, Clone)]\n");
 			appendf!(self, "pub enum {} {{\n", self.get_command_err(cmd));
 			appendf!(self, "    UnexpectedError(String),\n");
 			self.gen_variants(&cmd.err);
@@ -688,14 +690,14 @@ impl RustCodegen {
 				}
 				PBTypeDef::Struct { fields, doc, .. } => {
 					self.gen_doc(doc, 0);
-					appendf!(self, "#[derive(Debug)]\n");
+					appendf!(self, "#[derive(Debug, Clone)]\n");
 					appendf!(self, "pub struct {} {{\n", self.get_type_name(tp));
 					self.gen_fields(fields);
 					appendf!(self, "}}\n");
 				}
 				PBTypeDef::Enum { variants, doc, .. } => {
 					self.gen_doc(doc, 0);
-					appendf!(self, "#[derive(Debug)]\n");
+					appendf!(self, "#[derive(Debug, Clone)]\n");
 					appendf!(self, "pub enum {} {{\n", self.get_type_name(tp));
 					self.gen_variants(variants);
 					appendf!(self, "}}\n");

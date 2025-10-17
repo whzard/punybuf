@@ -332,7 +332,7 @@ impl<T: PBType> PBType for Vec<T> {
 }
 
 /// A convenience type wrapping a `Vec<u8>`, for more efficient (de)serialization.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bytes(pub Vec<u8>);
 
 impl PBType for Bytes {
