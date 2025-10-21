@@ -212,36 +212,6 @@ impl RustCodegen {
 		}
 	}
 	fn gen_command_enums(&mut self, def: &PunybufDefinition) {
-		/* appendf!(self, "pub struct CommandId(u32);\n");
-		appendf!(self, "impl CommandId {{\n");
-		appendf!(self, "    /// This function **panics** if the passed CommandId is invalid\n");
-		appendf!(self, "    pub fn new(id: u32) -> Self {{\n");
-		appendf!(self, "        match id {{\n");
-		for (i, cmd) in def.commands.iter().enumerate() {
-			if cmd.attrs.contains_key("@rust:ignore") {
-				continue;
-			}
-			if i == 0 {
-				appendf!(self, "            ");
-			} else {
-				appendf!(self, " |\n            ");
-			}
-			appendf!(self, "{}", cmd.command_id);
-		}
-		appendf!(self, "\n");
-		appendf!(self, "                => Self(id),\n");
-		appendf!(self, r#"            _ => panic!("invalid command id")"#);
-		appendf!(self, "\n");
-		appendf!(self, "        }}\n"); // match
-		appendf!(self, "    }}\n"); // fn new()
-
-		appendf!(self, "    /// Doesn't check whether `id` is a supported command ID.  \n");
-		appendf!(self, "    /// This isn't unsafe, but is likely to cause errors later.\n");
-		appendf!(self, "    pub fn new_unchecked(id: u32) -> Self {{\n");
-		appendf!(self, "        Self(id)\n");
-		appendf!(self, "    }}\n"); // fn new_unchecked()
-		appendf!(self, "}}\n"); // impl */
-
 		appendf!(self, "/// This enum contains all possible commands in the RPC definition.\n");
 		appendf!(self, "#[derive(Debug, Clone)]\n");
 		appendf!(self, "pub enum Command {{\n");
@@ -253,8 +223,66 @@ impl RustCodegen {
 		}
 		appendf!(self, "}}\n"); // enum Command
 
-		appendf!(self, "impl Command {{\n");
-		appendf!(self, "    pub {} deserialize_command<R: {}>(r: &mut R) -> Result<Self, io::Error> {{\n", self.get_fn(), self.read());
+		appendf!(self, "impl PBCommand for Command {{\n");
+		appendf!(self, "    fn id(&self) -> u32 {{\n");
+		appendf!(self, "        match self {{\n");
+		for cmd in &def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self, "            Self::{}(_) => {},\n", self.get_command_name(cmd), cmd.command_id);
+		}
+		appendf!(self, "        }}\n"); // match
+		appendf!(self, "    }}\n"); // fn id()
+
+		appendf!(self, "    fn is_void(&self) -> bool {{\n");
+		appendf!(self, "        match self {{\n");
+		for cmd in &def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self, "            Self::{}(_) => {},\n", self.get_command_name(cmd), cmd.ret.reference == "Void");
+		}
+		appendf!(self, "        }}\n"); // match
+		appendf!(self, "    }}\n"); // fn is_void()
+
+		appendf!(self, "    fn attributes(&self) -> &'static [(&'static str, Option<&'static str>)] {{\n");
+		appendf!(self, "        match self {{\n");
+		for cmd in &def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self, "            Self::{}(_) => {}::ATTRIBUTES,\n", self.get_command_name(cmd), self.get_command_name(cmd));
+		}
+		appendf!(self, "        }}\n"); // match
+		appendf!(self, "    }}\n"); // fn attributes()
+
+		appendf!(self, "    fn required_capability(&self) -> Option<&'static str> {{\n");
+		appendf!(self, "        match self {{\n");
+		for cmd in &def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self, "            Self::{}(_) => {}::REQUIRED_CAPABILITY,\n", self.get_command_name(cmd), self.get_command_name(cmd));
+		}
+		appendf!(self, "        }}\n"); // match
+		appendf!(self, "    }}\n"); // fn required_capability()
+
+		appendf!(self, "    {} serialize_self<R: {}>(&self, r: &mut R) -> Result<(), io::Error> {{\n", self.get_fn(), self.write());
+		appendf!(self, "        match self {{\n");
+		for cmd in &def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self, "            Self::{}(c) => c.serialize_self(r){},\n", self.get_command_name(cmd), self.maybe_await());
+		}
+		appendf!(self, "        }}\n"); // match
+		appendf!(self, "    }}\n"); // fn serialize_self()
+		appendf!(self, "}}\n\n"); // impl PBCommand
+	
+		appendf!(self, "impl Command {{\n\n"); // impl Command
+		appendf!(self, "    /// Reads both the ID of the command and its value\n");
+		appendf!(self, "    {} deserialize<R: {}>(r: &mut R) -> Result<Self, io::Error> {{\n", self.get_fn(), self.read());
 		appendf!(self, "        let mut id = [0; 4];\n");
 		appendf!(self, "        r.{};\n", self.read_exact("&mut id"));
 		appendf!(self, "        let id = u32::from_be_bytes(id);\n");
@@ -271,40 +299,7 @@ impl RustCodegen {
 		appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
 		appendf!(self, "\n");
 		appendf!(self, "        }})\n"); // match
-		appendf!(self, "    }}\n"); // fn deserialize_command()
-
-		appendf!(self, "    pub fn id(&self) -> u32 {{\n");
-		appendf!(self, "        match self {{\n");
-		for cmd in &def.commands {
-			if cmd.attrs.contains_key("@rust:ignore") {
-				continue;
-			}
-			appendf!(self, "            Self::{}(_) => {},\n", self.get_command_name(cmd), cmd.command_id);
-		}
-		appendf!(self, "        }}\n"); // match
-		appendf!(self, "    }}\n"); // fn id()
-
-		appendf!(self, "    pub fn attributes(&self) -> &'static [(&'static str, Option<&'static str>)] {{\n");
-		appendf!(self, "        match self {{\n");
-		for cmd in &def.commands {
-			if cmd.attrs.contains_key("@rust:ignore") {
-				continue;
-			}
-			appendf!(self, "            Self::{}(_) => {}::attributes(),\n", self.get_command_name(cmd), self.get_command_name(cmd));
-		}
-		appendf!(self, "        }}\n"); // match
-		appendf!(self, "    }}\n"); // fn attributes()
-
-		appendf!(self, "    pub fn required_capability(&self) -> Option<&'static str> {{\n");
-		appendf!(self, "        match self {{\n");
-		for cmd in &def.commands {
-			if cmd.attrs.contains_key("@rust:ignore") {
-				continue;
-			}
-			appendf!(self, "            Self::{}(_) => {}::required_capability(),\n", self.get_command_name(cmd), self.get_command_name(cmd));
-		}
-		appendf!(self, "        }}\n"); // match
-		appendf!(self, "    }}\n"); // fn required_capability()
+		appendf!(self, "    }}\n"); // fn deserialize()
 		appendf!(self, "}}\n\n"); // impl Command
 
 
@@ -321,6 +316,22 @@ impl RustCodegen {
 
 
 		appendf!(self, "impl CommandReturn {{\n");
+
+		appendf!(self, "    pub {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
+		appendf!(self, "        match self {{\n");
+		for cmd in &def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self,
+				"            Self::{}(c) => c.serialize(w){}?,\n",
+				self.get_command_name(cmd), self.maybe_await()
+			);
+		}
+		appendf!(self, "        }}\n"); // match
+		appendf!(self, "        Ok(())\n");
+		appendf!(self, "    }}\n"); // fn serialize
+
 		appendf!(self, "    pub {} deserialize_return<R: {}>(id: u32, r: &mut R) -> Result<Self, io::Error> {{\n", self.get_fn(), self.read());
 		appendf!(self, "        Ok(match id {{\n");
 		for cmd in &def.commands {
@@ -350,6 +361,21 @@ impl RustCodegen {
 		appendf!(self, "}}\n"); // enum CommandError
 
 		appendf!(self, "impl CommandError {{\n");
+		appendf!(self, "    pub {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
+		appendf!(self, "        match self {{\n");
+		for cmd in &def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self,
+				"            Self::{}(c) => c.serialize(w){}?,\n",
+				self.get_command_name(cmd), self.maybe_await()
+			);
+		}
+		appendf!(self, "        }}\n"); // match
+		appendf!(self, "        Ok(())\n");
+		appendf!(self, "    }}\n"); // fn serialize
+
 		appendf!(self, "    pub {} deserialize_error<R: {}>(id: u32, r: &mut R) -> Result<Self, io::Error> {{\n", self.get_fn(), self.read());
 		appendf!(self, "        Ok(match id {{\n");
 		for cmd in &def.commands {
@@ -597,36 +623,24 @@ impl RustCodegen {
 					}
 				}
 			}
-			appendf!(self, "impl PBCommand for {} {{\n", self.get_command_name(cmd));
-			appendf!(self, "    const MIN_SIZE: usize = 0; // TODO\n");
+			appendf!(self, "impl PBCommandExt for {} {{\n", self.get_command_name(cmd));
 			appendf!(self, "    type Error = {};\n", self.get_command_err(cmd));
 			appendf!(self, "    type Return = {};\n", self.gen_reference(&cmd.ret, false));
-			appendf!(self, "    fn id() -> u32 {{ {} }}\n", cmd.command_id);
+			appendf!(self, "    const MIN_SIZE: usize = 0; // TODO\n");
+			appendf!(self, "    const ID: u32 = {};\n", cmd.command_id);
+			if cmd.ret.reference == "Void" {
+				appendf!(self, "    const IS_VOID: bool = true;\n");
+			}
 			if !cmd.attrs.is_empty() {
-				appendf!(self, "    fn attributes() -> &'static [(&'static str, Option<&'static str>)] {{ &[\n");
+				appendf!(self, "    const ATTRIBUTES: &'static [(&'static str, Option<&'static str>)] = &[\n");
 				for (name, value) in &cmd.attrs {
 					appendf!(self, "        ({name:?}, {value:?}),\n");
 				}
-				appendf!(self, "    ] }}\n"); // attributes
+				appendf!(self, "    ];\n"); // attributes
 			}
 			if let Some(Some(cap)) = cmd.attrs.get("@capability") {
-				appendf!(self, "    fn required_capability() -> Option<&'static str> {{ \n");
-				appendf!(self, "        Some(&{cap:?})\n");
-				appendf!(self, "    }}\n"); // required_capability
+				appendf!(self, "    const REQUIRED_CAPABILITY: Option<&'static str> = Some(&{cap:?});\n");
 			}
-			if cmd.ret.reference == "Void" {
-				appendf!(self, "    fn is_void() -> bool {{ true }}\n");
-			}
-			appendf!(self, "    {} serialize_self<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
-			match &cmd.argument {
-				PBCommandArg::None => {},
-				PBCommandArg::Ref(_) => {
-					appendf!(self, "        self.0.serialize(w){}?;\n", self.maybe_await());
-				},
-				PBCommandArg::Struct { fields } => self.gen_serialize_fields(fields, !cmd.attrs.contains_key("@sealed")),
-			}
-			appendf!(self, "        Ok(())\n");
-			appendf!(self, "    }}\n"); // serialize_self
 			appendf!(self, "    {} deserialize<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 			match &cmd.argument {
 				PBCommandArg::None => {
@@ -638,6 +652,33 @@ impl RustCodegen {
 				PBCommandArg::Struct { fields } => self.gen_deserialize_fields(fields, !cmd.attrs.contains_key("@sealed")),
 			}
 			appendf!(self, "    }}\n"); // deserialize
+			appendf!(self, "}}\n"); // impl PBCommandExt
+
+			appendf!(self, "impl PBCommand for {} {{\n", self.get_command_name(cmd));
+			appendf!(self, "    fn id(&self) -> u32 {{ {} }}\n", cmd.command_id);
+			if cmd.ret.reference == "Void" {
+				appendf!(self, "    fn is_void(&self) -> bool {{ true }}\n");
+			}
+			if !cmd.attrs.is_empty() {
+				appendf!(self, "    fn attributes(&self) -> &'static [(&'static str, Option<&'static str>)] {{ \n");
+				appendf!(self, "        Self::ATTRIBUTES\n");
+				appendf!(self, "    }}\n"); // attributes
+			}
+			if let Some(Some(_)) = cmd.attrs.get("@capability") {
+				appendf!(self, "    fn required_capability(&self) -> Option<&'static str> {{ \n");
+				appendf!(self, "        Self::REQUIRED_CAPABILITY\n");
+				appendf!(self, "    }}\n"); // required_capability
+			}
+			appendf!(self, "    {} serialize_self<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
+			match &cmd.argument {
+				PBCommandArg::None => {},
+				PBCommandArg::Ref(_) => {
+					appendf!(self, "        self.0.serialize(w){}?;\n", self.maybe_await());
+				},
+				PBCommandArg::Struct { fields } => self.gen_serialize_fields(fields, !cmd.attrs.contains_key("@sealed")),
+			}
+			appendf!(self, "        Ok(())\n");
+			appendf!(self, "    }}\n"); // serialize_self
 			appendf!(self, "}}\n\n"); // impl PBCommand
 
 			appendf!(self, "#[derive(Debug, Clone)]\n");
