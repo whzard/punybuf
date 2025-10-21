@@ -271,39 +271,54 @@ impl PBType for String {
     }
 }
 
-/// A trait that all commands implement.
-pub trait PBCommand: Sized + Send + Sync {
-    const MIN_SIZE: usize;
+
+
+/// A trait that all individual commands implement. The enum of all commands *does not* implement this trait.
+pub trait PBCommandExt: Sized + Send + Sync {
     type Error: PBType;
     type Return: PBType;
 
-    fn id() -> u32;
+    const MIN_SIZE: usize;
+    /// The ID of the command.
+    const ID: u32;
+    /// Whether the `Return` type is `Void`.
+    const IS_VOID: bool = false;
 
+    const ATTRIBUTES: &'static [(&'static str, Option<&'static str>)] = &[];
+    const REQUIRED_CAPABILITY: Option<&'static str> = None;
 
-    fn attributes() -> &'static [(&'static str, Option<&'static str>)] { &[] }
-    fn required_capability() -> Option<&'static str> {
-        None
+    fn deserialize_return<R: AsyncReadExt + Unpin + Send>(&self, r: &mut R) -> impl std::future::Future<Output = io::Result<Self::Return>> + Send {
+        async { Self::Return::deserialize(r).await }
+    }
+    fn deserialize_error<R: AsyncReadExt + Unpin + Send>(&self, r: &mut R) -> impl std::future::Future<Output = io::Result<Self::Error>> + Send {
+        async { Self::Error::deserialize(r).await }
     }
 
-    /// Whether the `Return` type is `Void`
-    fn is_void() -> bool { false }
+    /// Does **not** read the command ID.  
+    /// If you need to read the command ID, use `Command::deserialize` from the generated file.
+    fn deserialize<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> impl std::future::Future<Output = io::Result<Self>> + Send;
+}
 
-    /// Convenience method to get the id of the command. Calls `id()` internally
-    fn get_id(&self) -> u32 {
-        Self::id()
+/// A trait that all commands implement.
+pub trait PBCommand: Sized + Send + Sync {
+
+    fn id(&self) -> u32;
+
+    /// Whether the `Return` type is `Void`
+    fn is_void(&self) -> bool { false }
+
+    fn attributes(&self) -> &'static [(&'static str, Option<&'static str>)] { &[] }
+    fn required_capability(&self) -> Option<&'static str> {
+        None
     }
 
     /// Does **not** write the command ID.
     fn serialize_self<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> impl std::future::Future<Output = io::Result<()>> + Send;
 
-    /// Does **not** read the command ID.  
-    /// If you need to read the command ID, use `Command::deserialize` from the generated file.
-    fn deserialize<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> impl std::future::Future<Output = io::Result<Self>> + Send;
-
     /// Writes both the command ID and the argument body
     fn serialize<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> impl std::future::Future<Output = io::Result<()>> + Send {
         async {
-            w.write_all(&Self::id().to_be_bytes()).await?;
+            w.write_all(&self.id().to_be_bytes()).await?;
             self.serialize_self(w).await
         }
     }

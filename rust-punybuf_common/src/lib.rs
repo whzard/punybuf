@@ -406,38 +406,19 @@ impl PBType for String {
     }
 }
 
-pub trait PBCommand {
-    const MIN_SIZE: usize;
+/// A trait that all individual commands implement. The enum of all commands *does not* implement this trait.
+pub trait PBCommandExt {
     type Error: PBType;
     type Return: PBType;
 
-    fn id() -> u32;
+    const MIN_SIZE: usize;
+    /// The ID of the command.
+    const ID: u32;
+    /// Whether the `Return` type is `Void`.
+    const IS_VOID: bool = false;
 
-    fn attributes() -> &'static [(&'static str, Option<&'static str>)] { &[] }
-    fn required_capability() -> Option<&'static str> {
-        None
-    }
-
-    /// Whether the `Return` type is `Void`
-    fn is_void() -> bool { false }
-
-    /// Convenience method to get the id of the command. Calls `id()` internally
-    fn get_id(&self) -> u32 {
-        Self::id()
-    }
-
-    /// Does **not** write the command ID.
-    fn serialize_self<W: Write>(&self, w: &mut W) -> io::Result<()>;
-
-    /// Does **not** read the command ID.  
-    /// If you need to read the command ID, use `CommandID::deserialize`
-    fn deserialize<R: Read>(r: &mut R) -> io::Result<Self> where Self: Sized;
-
-    /// Writes both the command ID and the argument body
-    fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
-        w.write_all(&Self::id().to_be_bytes())?;
-        self.serialize_self(w)
-    }
+    const ATTRIBUTES: &'static [(&'static str, Option<&'static str>)] = &[];
+    const REQUIRED_CAPABILITY: Option<&'static str> = None;
 
     fn deserialize_return<R: Read>(&self, r: &mut R) -> io::Result<Self::Return> {
         Self::Return::deserialize(r)
@@ -445,4 +426,32 @@ pub trait PBCommand {
     fn deserialize_error<R: Read>(&self, r: &mut R) -> io::Result<Self::Error> {
         Self::Error::deserialize(r)
     }
+
+    /// Does **not** read the command ID.  
+    /// If you need to read the command ID, use `CommandID::deserialize`
+    fn deserialize<R: Read>(r: &mut R) -> io::Result<Self> where Self: Sized;
 }
+
+/// A trait that all commands implement. The enum of all commands also implements this trait.
+pub trait PBCommand {
+    fn id(&self) -> u32;
+
+    /// Whether the `Return` type is `Void`
+    fn is_void(&self) -> bool { false }
+
+    fn attributes(&self) -> &'static [(&'static str, Option<&'static str>)] { &[] }
+    fn required_capability(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Does **not** write the command ID.
+    fn serialize_self<W: Write>(&self, w: &mut W) -> io::Result<()>;
+
+    /// Writes both the command ID and the argument body
+    fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        w.write_all(&self.id().to_be_bytes())?;
+        self.serialize_self(w)
+    }
+}
+
+mod test;
