@@ -282,7 +282,7 @@ impl RustCodegen {
 	
 		appendf!(self, "impl Command {{\n\n"); // impl Command
 		appendf!(self, "    /// Reads both the ID of the command and its value\n");
-		appendf!(self, "    {} deserialize<R: {}>(r: &mut R) -> Result<Self, io::Error> {{\n", self.get_fn(), self.read());
+		appendf!(self, "    pub {} deserialize<R: {}>(r: &mut R) -> Result<Self, io::Error> {{\n", self.get_fn(), self.read());
 		appendf!(self, "        let mut id = [0; 4];\n");
 		appendf!(self, "        r.{};\n", self.read_exact("&mut id"));
 		appendf!(self, "        let id = u32::from_be_bytes(id);\n");
