@@ -4,7 +4,7 @@ A binary format for encoding strongly-typed data (and RPC).
 > Please note, this is not finished yet, expect bugs.
 
 ## What is this?
-This is the compiler for the PunyBuf Definition language (.pbd). It takes a .pbd file, desugars it, validates it, and outputs a JSON representation that may later be used by other programs for code generation. It also supports natively generating Rust code. (TODO: no it doesn't)
+This is the compiler for the PunyBuf Definition language (.pbd). It takes a .pbd file, desugars it, validates it, and outputs a JSON representation that may later be used by other programs for code generation. It also supports natively generating Rust code.
 
 Read about the **[Definition Language and general concepts](docs/Language.md)**
 
