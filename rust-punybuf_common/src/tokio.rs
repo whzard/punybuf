@@ -40,7 +40,7 @@ impl PBType for UInt {
     async fn serialize<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> io::Result<()> {
         let mut uint = self.0;
         if uint < 128 {
-            w.write_all(&uint.to_be_bytes()[0..1]).await?;
+            w.write_all(&uint.to_be_bytes()[7..8]).await?;
 
             } else if uint < 16512 {
                 uint -= 128;
@@ -67,7 +67,7 @@ impl PBType for UInt {
                 w.write_all(bytes).await?;
 
             } else {
-                Err(io::Error::other("number too big (max 1152921573328437376)"))?;
+                Err(io::Error::other("number too big (max 1152921573328437375)"))?;
             }
             Ok(())
     }
@@ -87,25 +87,25 @@ impl PBType for UInt {
                 // 10xxxxxx
                 buf[0] &= 0b00_111111;
                 r.read_exact(&mut buf[1..2]).await?;
-                Self(u64::from_be_bytes([buf[1], buf[0], 0, 0, 0, 0, 0, 0]) + 128)
+                Self(u64::from_le_bytes([buf[1], buf[0], 0, 0, 0, 0, 0, 0]) + 128)
 
             } else if first_byte & 0b001_00000 == 0 {
                 // 110xxxxx
                 buf[0] &= 0b000_11111;
                 r.read_exact(&mut buf[1..3]).await?;
-                Self(u64::from_be_bytes([buf[2], buf[1], buf[0], 0, 0, 0, 0, 0]) + 16512)
+                Self(u64::from_le_bytes([buf[2], buf[1], buf[0], 0, 0, 0, 0, 0]) + 16512)
 
             } else if first_byte & 0b0001_0000 == 0 {
                 // 1110xxxx
                 buf[0] &= 0b0000_1111;
                 r.read_exact(&mut buf[1..5]).await?;
-                Self(u64::from_be_bytes([buf[4], buf[3], buf[2], buf[1], buf[0], 0, 0, 0]) + 2113664)
+                Self(u64::from_le_bytes([buf[4], buf[3], buf[2], buf[1], buf[0], 0, 0, 0]) + 2113664)
 
             } else {
                 // 1111xxxx
                 buf[0] &= 0b0000_1111;
                 r.read_exact(&mut buf[1..8]).await?;
-                Self(u64::from_be_bytes([buf[7], buf[6], buf[5], buf[4], buf[3], buf[2], buf[1], buf[0]]) + 68721590400)
+                Self(u64::from_le_bytes([buf[7], buf[6], buf[5], buf[4], buf[3], buf[2], buf[1], buf[0]]) + 68721590400)
             }
         )
     }

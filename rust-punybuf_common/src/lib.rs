@@ -173,7 +173,7 @@ impl PBType for UInt {
                 w.write_all(bytes)?;
 
             } else {
-                Err(io::Error::other("number too big (max 1152921573328437376)"))?;
+                Err(io::Error::other("number too big (max 1152921573328437375)"))?;
             }
             Ok(())
     }
@@ -454,4 +454,36 @@ pub trait PBCommand {
     }
 }
 
-mod test;
+// TODO: write more tests
+#[cfg(test)]
+mod libtest {
+	const TEST_UINTS: &[u64] = &[
+		0, 32, 64, 127, 128, 129,
+		16511, 16512, 16513,
+		2113663, 2113664, 2113665,
+		68721590399, 68721590400, 68721590401,
+		1152921573328437375
+	];
+	
+	#[test]
+	fn uint_correct() {
+		use crate::{PBType, UInt};
+		for n in TEST_UINTS {
+			let mut v = vec![];
+			UInt(*n).serialize(&mut v).unwrap();
+			let same = UInt::deserialize(&mut &v[..]).unwrap();
+			assert_eq!(same.0, *n);
+		}
+	}
+	
+	#[tokio::test]
+	async fn async_uint_correct() {
+		use crate::tokio::{PBType, UInt};
+		for n in TEST_UINTS {
+			let mut v = vec![];
+			UInt(*n).serialize(&mut v).await.unwrap();
+			let same = UInt::deserialize(&mut &v[..]).await.unwrap();
+			assert_eq!(same.0, *n);
+		}
+	}
+}
