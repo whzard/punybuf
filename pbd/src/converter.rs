@@ -66,7 +66,7 @@
 					}[]
 				}[]
 			}
-			ret?: Ref
+			ret: Ref
 			err: {
 				name: string
 				discriminant: number
@@ -83,7 +83,9 @@
 
 use std::collections::HashMap;
 
-use crate::flattener::{PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBTypeDef, PBTypeRef, PunybufDefinition};
+use crate::flattener::{
+	PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBTypeDef, PBTypeRef, PunybufDefinition,
+};
 
 fn convert_attrs(attrs: &HashMap<String, Option<String>>) -> json::JsonValue {
 	let mut obj = json::JsonValue::new_object();

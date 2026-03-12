@@ -1,4 +1,8 @@
-use std::{fmt::{Debug, Display}, iter::Peekable, rc::Rc};
+use std::{
+	fmt::{Debug, Display},
+	iter::Peekable,
+	rc::Rc,
+};
 
 use crate::errors::{parser_err, ExtendedErrorExplanation, PunybufError};
 

@@ -1,9 +1,11 @@
 use std::{env, fs::read_to_string, io, path::Path, rc::Rc};
 
 use crate::{
-	errors::{ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError, BOLD, NORMAL, YELLOW},
+	errors::{
+		ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError, BOLD, NORMAL, YELLOW,
+	},
 	lexer::{IncludeHandler, Lexer, Loc, Span, Token},
-	pb_err
+	pb_err,
 };
 
 const COMMON: &str = include_str!("../baked/common.pbd");

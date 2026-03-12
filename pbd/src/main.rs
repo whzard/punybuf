@@ -1,5 +1,10 @@
-use std::{fs::{read_to_string, File}, io::Write, path::Path, process::exit};
 use clap::{arg, command, ArgAction};
+use std::{
+	fs::{read_to_string, File},
+	io::Write,
+	path::Path,
+	process::exit,
+};
 
 mod files;
 
@@ -23,6 +28,8 @@ mod converter;
 
 mod rust_codegen;
 use rust_codegen::RustCodegen;
+
+use crate::lexer::Span;
 
 mod binary_compat;
 
@@ -80,7 +87,19 @@ fn main() {
 
 		if let Some(compat) = check_binary {
 			let json = read_to_string(compat).map_err(|e| e.to_string())?;
-			binary_compat::BinaryCompat.check(&json, &def).map_err(|e| e.to_string())?;
+			binary_compat::BinaryCompat::new(&json, &def)?.check().map_err(|mut e| {
+				let mut expl = if let Some(e) = e.explanation {
+					e
+				} else {
+					ExtendedErrorExplanation::empty()
+				};
+				expl.before_error.push(InfoExplanation {
+					span: Span::impossible(), level: InfoLevel::Info,
+					content: format!("\"{file}\" is not binary compatible with \"{compat}\":")
+				});
+				e.explanation = Some(expl);
+				e.to_string()
+			})?;
 		}
 
 		for out_file in out {

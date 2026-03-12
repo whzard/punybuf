@@ -6,24 +6,30 @@
 // the fucked-upness of the code. Spend too long here, however,
 // and you will forever be trapped in the Resolver's domain.
 
-use std::{collections::{HashMap, HashSet, VecDeque}, u32, vec};
+use std::{
+	collections::{HashMap, HashSet, VecDeque},
+	u32, vec,
+};
 
-use crate::flattener::{PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBTypeDef, PBTypeRef, PunybufDefinition, PB_CRC};
+use crate::flattener::{
+	PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBTypeDef, PBTypeRef, PunybufDefinition,
+	PB_CRC,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DependantKind {
+pub enum DependentKind {
 	Type, Command
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Dependant {
+pub struct Dependent {
 	pub name: String,
 	pub layer: u32,
-	pub kind: DependantKind
+	pub kind: DependentKind
 }
 
 pub struct LayerResolver {
-	pub dependencies: HashMap<String, HashSet<Dependant>>,
+	pub dependencies: HashMap<String, HashSet<Dependent>>,
 	pub should_resolve_aliases: bool,
 }
 
@@ -50,61 +56,61 @@ impl LayerResolver {
 			should_resolve_aliases,
 		}
 	}
-	fn new_dependant(&mut self, refr: &PBTypeRef, dependant: Dependant) {
+	fn new_dependent(&mut self, refr: &PBTypeRef, dependent: Dependent) {
 		if !refr.is_global {
 			// a type cannot depend on its own generic params.
 			// instead the type that depends on it also depends on all
 			// generic arguments it specifies
 			return;
 		}
-		let clone = dependant.clone();
-		self.new_dependant_string(&refr.reference, dependant);
+		let clone = dependent.clone();
+		self.new_dependent_string(&refr.reference, dependent);
 		for generic_ref in &refr.generics {
-			self.new_dependant(generic_ref, clone.clone());
+			self.new_dependent(generic_ref, clone.clone());
 		}
 	}
-	fn new_dependant_string(&mut self, depends_on: &str, dependant: Dependant) {
-		if *depends_on == dependant.name {
+	fn new_dependent_string(&mut self, depends_on: &str, dependent: Dependent) {
+		if *depends_on == dependent.name {
 			// this is normal, as several builtins are defined like "Type = Type"
 			return;
 		}
 
 		if let Some(deps) = self.dependencies.get_mut(depends_on) {
-			deps.insert(dependant.clone());
+			deps.insert(dependent.clone());
 
 		} else {
 			let mut hs = HashSet::new();
-			hs.insert(dependant.clone());
+			hs.insert(dependent.clone());
 			self.dependencies.insert(depends_on.to_string(), hs);
 		}
 	}
-	fn analyze_struct_dependencies(&mut self, fields: &Vec<PBField>, dependant: Dependant) {
+	fn analyze_struct_dependencies(&mut self, fields: &Vec<PBField>, dependent: Dependent) {
 		for field in fields {
-			let clone = dependant.clone();
-			self.new_dependant(&field.value, clone);
+			let clone = dependent.clone();
+			self.new_dependent(&field.value, clone);
 			
 			let Some(flags) = &field.flags else { continue };
-			let clone_again = dependant.clone();
+			let clone_again = dependent.clone();
 
 			for flag in flags {
 				let Some(refr) = &flag.value else { continue };
 
-				self.new_dependant(&refr, clone_again.clone());
+				self.new_dependent(&refr, clone_again.clone());
 			}
 		}
 	}
-	fn analyze_enum_dependencies(&mut self, variants: &Vec<PBEnumVariant>, dependant: Dependant) {
+	fn analyze_enum_dependencies(&mut self, variants: &Vec<PBEnumVariant>, dependent: Dependent) {
 		for variant in variants {
 			let Some(refr) = &variant.value else { continue };
 
-			self.new_dependant(&refr, dependant.clone());
+			self.new_dependent(&refr, dependent.clone());
 		}
 	}
 	fn analyze_type_dependencies(&mut self, tp: &PBTypeDef) {
-		let dep = Dependant {
+		let dep = Dependent {
 			name: tp.get_name().0.to_string(),
 			layer: *tp.get_layer(),
-			kind: DependantKind::Type
+			kind: DependentKind::Type
 		};
 		match tp {
 			PBTypeDef::Struct { fields, .. } => {
@@ -114,25 +120,25 @@ impl LayerResolver {
 				self.analyze_enum_dependencies(variants, dep);
 			}
 			PBTypeDef::Alias { alias, .. } => {
-				self.new_dependant(&alias, dep);
+				self.new_dependent(&alias, dep);
 			}
 		}
 	}
 	fn analyze_command_dependencies(&mut self, cmd: &PBCommandDef) {
-		let dep = Dependant {
+		let dep = Dependent {
 			name: cmd.name.clone(),
 			layer: cmd.layer,
-			kind: DependantKind::Command
+			kind: DependentKind::Command
 		};
 		if cmd.ret.reference != "Void" {
-			self.new_dependant(&cmd.ret, dep.clone());
+			self.new_dependent(&cmd.ret, dep.clone());
 		}
 		match &cmd.argument {
 			PBCommandArg::Struct { fields } => {
 				self.analyze_struct_dependencies(fields, dep.clone());
 			}
 			PBCommandArg::Ref(rf) => {
-				self.new_dependant(&rf, dep.clone());
+				self.new_dependent(&rf, dep.clone());
 			}
 			PBCommandArg::None => {}
 		}
@@ -154,41 +160,41 @@ impl LayerResolver {
 		possible_types.sort_by_key(|tp| tp.get_layer());
 		return possible_types.last().map(|v| TypeOrCmdDef::TypeDef(&v));
 	}
-	fn is_highest_layer(definition: &PunybufDefinition, dependant: &Dependant, limit_layer: u32) -> bool {
-		let Some(highest_layer) = Self::get_highest_layer(definition, &dependant.name, limit_layer) else {return true};
+	fn is_highest_layer(definition: &PunybufDefinition, dependent: &Dependent, limit_layer: u32) -> bool {
+		let Some(highest_layer) = Self::get_highest_layer(definition, &dependent.name, limit_layer) else {return true};
 
-		if highest_layer.get_layer() < &dependant.layer {
-			panic!("bad state: highest layer of thing {:?} is less than dependant {:?}", highest_layer.get_layer(), dependant)
+		if highest_layer.get_layer() < &dependent.layer {
+			panic!("bad state: highest layer of thing {:?} is less than dependent {:?}", highest_layer.get_layer(), dependent)
 		}
-		return highest_layer.get_layer() == &dependant.layer;
+		return highest_layer.get_layer() == &dependent.layer;
 	}
-	fn get_type_from_dependant<'def>(definition: &'def PunybufDefinition, dependant: &Dependant) -> Option<&'def PBTypeDef> {
-		definition.types.iter().find(|tp| tp.get_name().0 == &dependant.name && tp.get_layer() == &dependant.layer)
+	fn get_type_from_dependent<'def>(definition: &'def PunybufDefinition, dependent: &Dependent) -> Option<&'def PBTypeDef> {
+		definition.types.iter().find(|tp| tp.get_name().0 == &dependent.name && tp.get_layer() == &dependent.layer)
 	}
-	fn get_command_from_dependant<'def>(definition: &'def PunybufDefinition, dependant: &Dependant) -> Option<&'def PBCommandDef> {
-		definition.commands.iter().find(|cmd| cmd.name == dependant.name && cmd.layer == dependant.layer)
+	fn get_command_from_dependent<'def>(definition: &'def PunybufDefinition, dependent: &Dependent) -> Option<&'def PBCommandDef> {
+		definition.commands.iter().find(|cmd| cmd.name == dependent.name && cmd.layer == dependent.layer)
 	}
 	fn track_changes(&mut self, definition: &mut PunybufDefinition, index: usize) -> () {
 		let changed_type = &definition.types[index];
 
 		let mut new_types = vec![];
 		let mut new_commands = vec![];
-		let Some(dependants) = self.dependencies.get(changed_type.get_name().0) else { return };
-		for dependant in dependants {
-			if &dependant.layer >= changed_type.get_layer() {
+		let Some(dependents) = self.dependencies.get(changed_type.get_name().0) else { return };
+		for dependent in dependents {
+			if &dependent.layer >= changed_type.get_layer() {
 				continue;
 			}
-			if !Self::is_highest_layer(definition, dependant, *changed_type.get_layer()) {
+			if !Self::is_highest_layer(definition, dependent, *changed_type.get_layer()) {
 				// Eliminate unnecessary generations:
 				// B#0 depends on A. A got changed in A#2, but the latest B is B#1 that doesn't depend on A.
 				//  => no need to generate a new B.
 				continue;
 			}
 
-			match dependant.kind {
-				DependantKind::Type => {
-					let mut new_type = Self::get_type_from_dependant(definition, dependant)
-						.expect("dependant doesn't exist?") // trust the verifier 
+			match dependent.kind {
+				DependentKind::Type => {
+					let mut new_type = Self::get_type_from_dependent(definition, dependent)
+						.expect("dependent doesn't exist?") // trust the verifier 
 						.clone();
 					match &mut new_type {
 						PBTypeDef::Alias { layer, .. } |
@@ -199,8 +205,8 @@ impl LayerResolver {
 					}
 					new_types.push(new_type);
 				}
-				DependantKind::Command => {
-					let mut new_cmd = Self::get_command_from_dependant(definition, dependant).unwrap().clone(); // trust the verifier
+				DependentKind::Command => {
+					let mut new_cmd = Self::get_command_from_dependent(definition, dependent).unwrap().clone(); // trust the verifier
 					new_cmd.layer = *changed_type.get_layer();
 					new_cmd.command_id = PB_CRC.checksum(format!("{}.{}", new_cmd.name, new_cmd.layer).as_bytes());
 					new_commands.push(new_cmd);
