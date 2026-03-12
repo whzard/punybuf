@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::{iter::Peekable, slice::Iter, vec};
 
-use crate::errors::{parser_err, pb_err, ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError};
+use crate::errors::{
+	parser_err, pb_err, ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError,
+};
 
 use crate::lexer::{Span, Token, TokenData};
 

@@ -1,7 +1,14 @@
-use std::collections::HashMap;
 use crc::{Crc, CRC_32_CKSUM};
+use std::collections::HashMap;
 
-use crate::{errors::{parser_err, ExtendedErrorExplanation, PunybufError}, lexer::Span, parser::{CommandArgument, Declaration, DeclarationValue, EnumVariant, Field, FlexibleDeclarationValue, ValueEnumVariant, ValueReference}};
+use crate::{
+	errors::{parser_err, ExtendedErrorExplanation, PunybufError},
+	lexer::Span,
+	parser::{
+		CommandArgument, Declaration, DeclarationValue, EnumVariant, Field,
+		FlexibleDeclarationValue, ValueEnumVariant, ValueReference,
+	},
+};
 
 pub const PB_CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_CKSUM);
 
@@ -187,7 +194,7 @@ pub struct PunybufDefinition {
 }
 
 impl PunybufDefinition {
-	fn new(includes_common: bool) -> Self {
+	pub fn new(includes_common: bool) -> Self {
 		Self {
 			types: vec![],
 			commands: vec![],

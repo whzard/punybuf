@@ -1,4 +1,6 @@
-use crate::flattener::{PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBTypeDef, PBTypeRef, PunybufDefinition};
+use crate::flattener::{
+	PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBTypeDef, PBTypeRef, PunybufDefinition,
+};
 
 const TO_MAP: &str = r#"
     fn to_map_allow_duplicates(self) -> (std::collections::HashMap<K, V>, bool) {

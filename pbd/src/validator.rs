@@ -1,6 +1,15 @@
 use std::{collections::HashMap, u32};
 
-use crate::{errors::{parser_err, pb_err, ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError}, flattener::{PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBFieldFlag, PBTypeDef, PBTypeRef, PunybufDefinition}, lexer::Span};
+use crate::{
+	errors::{
+		parser_err, pb_err, ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError,
+	},
+	flattener::{
+		PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBFieldFlag, PBTypeDef, PBTypeRef,
+		PunybufDefinition,
+	},
+	lexer::Span,
+};
 
 const COMMON_TYPES: [&str; 16] = [
 	"Void",
@@ -171,7 +180,9 @@ impl<'d> PunybufValidator<'d> {
 	fn find_type_by_name(&self, name: &str, limit_layer: u32) -> Option<&PBTypeDef> {
 		self.definition.types.iter().rev().find(|typ| typ.get_name().0 == name && *typ.get_layer() <= limit_layer)
 	}
-	fn validate_reference(&self, refr: &PBTypeRef, owner: &Owner) -> Result<ReferenceDefinition<'_>, PunybufError> {
+	fn validate_reference(&self, refr: &PBTypeRef, owner: &Owner) -> 
+		Result<ReferenceDefinition<'_>, PunybufError> 
+	{
 		if refr.reference == "Void" {
 			return Err(parser_err!(
 				refr.reference_span,
@@ -215,11 +226,17 @@ impl<'d> PunybufValidator<'d> {
 
 						return Err(pb_err!(
 							refr.reference_span,
-							format!("inline declaration of `{}` conflicts with a generic parameter", refr.reference),
+							format!(
+								"inline declaration of `{}` conflicts with a generic parameter",
+								refr.reference
+							),
 							ExtendedErrorExplanation::error_and(vec![
 								InfoExplanation {
 									span: generic_ref.1.clone(),
-									content: format!("generic parameters, including `{}`, are defined here...", refr.reference),
+									content: format!(
+										"generic parameters, including `{}`, are defined here...",
+										refr.reference
+									),
 									level: InfoLevel::Info
 								},
 								InfoExplanation {
@@ -264,7 +281,10 @@ impl<'d> PunybufValidator<'d> {
 										},
 										InfoExplanation {
 											span: refr.reference_span.clone(),
-											content: format!("...`{}` is referenced, outside of `{valid_owner}`", refr.reference),
+											content: format!(
+												"...`{}` is referenced, outside of `{valid_owner}`",
+												refr.reference
+											),
 											level: InfoLevel::Error
 										}
 									];
@@ -298,7 +318,10 @@ impl<'d> PunybufValidator<'d> {
 											});
 											explanation.push(InfoExplanation {
 												span: refr.reference_span.clone(),
-												content: format!("also, `{}` is a cyclic type, so be careful!", refr.reference),
+												content: format!(
+													"also, `{}` is a cyclic type, so be careful!",
+													refr.reference
+												),
 												level: InfoLevel::Warning
 											});
 										}
@@ -306,7 +329,10 @@ impl<'d> PunybufValidator<'d> {
 
 									return Err(pb_err!(
 										refr.reference_span,
-										format!("type `{}` is inline and cannot be referenced outside `{valid_owner}`", refr.reference),
+										format!(
+											"type `{}` is inline and cannot be referenced outside `{valid_owner}`",
+											refr.reference
+										),
 										ExtendedErrorExplanation::custom(explanation)
 									));
 								}
@@ -390,7 +416,10 @@ impl<'d> PunybufValidator<'d> {
 						ExtendedErrorExplanation::custom(vec![
 							InfoExplanation {
 								span: owner.get_name().1.clone(),
-								content: format!("`{}` is declared at layer {}...", owner.get_name().0, owner.get_layer()),
+								content: format!(
+									"`{}` is declared at layer {}...",
+									owner.get_name().0, owner.get_layer()
+								),
 								level: InfoLevel::Info
 							},
 							InfoExplanation {
@@ -414,7 +443,10 @@ impl<'d> PunybufValidator<'d> {
 				if COMMON_TYPES.iter().find(|x| *x == &refr.reference).is_some() {
 					return Err(pb_err!(
 						refr.reference_span,
-						format!("cannot find type `{}` in scope, perhaps you forgot to `include common`?", refr.reference)
+						format!(
+							"cannot find type `{}` in scope, perhaps you forgot to `include common`?",
+							refr.reference
+						)
 					));
 				}
 				Err(pb_err!(
@@ -566,11 +598,18 @@ impl<'d> PunybufValidator<'d> {
 					Ok(max_amount) => if flags.len() > max_amount {
 						return Err(pb_err!(
 							field.name_span,
-							format!("too many flags ({}); maximum amount of flags for `{}` is {max_amount}", flags.len(), field.value.reference),
+							format!(
+								"too many flags ({}); maximum amount of flags for `{}` is {max_amount}",
+								flags.len(),
+								field.value.reference
+							),
 							ExtendedErrorExplanation::error_and(vec![
 								InfoExplanation {
 									span: field.value.reference_span.clone(),
-									content: format!("the maximum amount of flags is bounded by type `{}`", field.value.reference),
+									content: format!(
+										"the maximum amount of flags is bounded by type `{}`",
+										field.value.reference
+									),
 									level: InfoLevel::Info
 								}
 							])
@@ -581,7 +620,10 @@ impl<'d> PunybufValidator<'d> {
 						let mut after_error: Vec<InfoExplanation> = vec![
 							InfoExplanation {
 								span: decl_span.clone(),
-								content: format!("`{}` is defined here, without the `@flags` attribute", field.value.reference),
+								content: format!(
+									"`{}` is defined here, without the `@flags` attribute",
+									field.value.reference
+								),
 								level: InfoLevel::Info
 							}
 						];
@@ -589,14 +631,20 @@ impl<'d> PunybufValidator<'d> {
 							after_error.push(
 								InfoExplanation {
 									span: decl.get_name().1.clone(),
-									content: format!("...this alias leads to `{}`, also without the `@flags` attribute", decl.get_name().0),
+									content: format!(
+										"...this alias leads to `{}`, also without the `@flags` attribute",
+										decl.get_name().0
+									),
 									level: InfoLevel::Info
 								}
 							);
 						}
 						return Err(pb_err!(
 							field.value.reference_span,
-							format!("flag fields' types must be marked `@flags`, `{}` is not", field.value.reference),
+							format!(
+								"flag fields' types must be marked `@flags`, `{}` is not",
+								field.value.reference
+							),
 							ExtendedErrorExplanation::error_and(after_error)
 						))
 					}
@@ -604,7 +652,10 @@ impl<'d> PunybufValidator<'d> {
 						let mut after_error: Vec<InfoExplanation> = vec![
 							InfoExplanation {
 								span: decl_span.clone(),
-								content: format!("`{}` is defined here, without the `@flags` attribute...", field.value.reference),
+								content: format!(
+									"`{}` is defined here, without the `@flags` attribute...",
+									field.value.reference
+								),
 								level: InfoLevel::Info
 							}
 						];
@@ -612,7 +663,10 @@ impl<'d> PunybufValidator<'d> {
 							after_error.push(
 								InfoExplanation {
 									span: typedef.get_name().1.clone(),
-									content: format!("...this alias leads to `{}`, also without the `@flags` attribute...", typedef.get_name().0),
+									content: format!(
+										"...this alias leads to `{}`, also without the `@flags` attribute...",
+										typedef.get_name().0
+									),
 									level: InfoLevel::Info
 								}
 							);
@@ -627,13 +681,19 @@ impl<'d> PunybufValidator<'d> {
 						after_error.push(
 							InfoExplanation {
 								span: ref_to_generic.1.clone(),
-								content: format!("...and later aliases to `{}`, which cannot be constrained as `@flags`", ref_to_generic.0),
+								content: format!(
+									"...and later aliases to `{}`, which cannot be constrained as `@flags`",
+									ref_to_generic.0
+								),
 								level: InfoLevel::Info
 							}
 						);
 						return Err(pb_err!(
 							field.value.reference_span.extend(&field.value.generic_span),
-							format!("flag fields' types must be marked `@flags`, cannot verify if `{}< ... >` is", field.value.reference),
+							format!(
+								"flag fields' types must be marked `@flags`, cannot verify if `{}< ... >` is",
+								field.value.reference
+							),
 							ExtendedErrorExplanation::error_and(after_error)
 						))
 					},
@@ -824,7 +884,9 @@ impl<'d> PunybufValidator<'d> {
 			let attrs = tp.get_attrs();
 			let name = tp.get_name();
 			if name.0 == "Void" && !attrs.contains_key("@void") {
-				return Err(parser_err!(name.1, "cannot declare a reserved type `Void`, unless the `@void` attribute is present"));
+				return Err(parser_err!(
+					name.1, "cannot declare a reserved type `Void`, unless the `@void` attribute is present"
+				));
 			}
 			declared_things.push((name.0, tp.get_layer(), name.1, ThingKind::Type));
 			if name.0 != "Void" {
@@ -859,16 +921,23 @@ impl<'d> PunybufValidator<'d> {
 				} else if already_decl.3 != ThingKind::Command {
 					return Err(pb_err!(
 						already_decl.2,
-						format!("invalid redeclaration of `{}`; even in different layers, types can't become commands (and vice versa)", already_decl.0),
+						format!("invalid redeclaration of `{}`; even in different layers, \
+							types can't become commands (and vice versa)", already_decl.0),
 						ExtendedErrorExplanation::custom(vec![
 							InfoExplanation {
 								span: already_decl.2.clone(),
-								content: format!("`{}` declared here, in layer {}, as a type", already_decl.0, already_decl.1),
+								content: format!(
+									"`{}` declared here, in layer {}, as a type",
+									already_decl.0, already_decl.1
+								),
 								level: InfoLevel::Error
 							},
 							InfoExplanation {
 								span: cmd.name_span.clone(),
-								content: format!("`{}` declared here, in layer {}, as a command", already_decl.0, already_decl.1),
+								content: format!(
+									"`{}` declared here, in layer {}, as a command",
+									already_decl.0, already_decl.1
+								),
 								level: InfoLevel::Error
 							},
 						])
@@ -876,7 +945,9 @@ impl<'d> PunybufValidator<'d> {
 				}
 			}
 			if cmd.name == "Void" {
-				return Err(parser_err!(cmd.name_span, "cannot declare a command with the reserved name `Void`"));
+				return Err(parser_err!(
+					cmd.name_span, "cannot declare a command with the reserved name `Void`"
+				));
 			}
 			declared_things.push((&cmd.name, &cmd.layer, &cmd.name_span, ThingKind::Command));
 			self.validate_command(cmd)?;
@@ -885,16 +956,19 @@ impl<'d> PunybufValidator<'d> {
 				// doesn't check the crc32 after resolution, but bro cmon
 				return Err(pb_err!(
 					cmd.name_span,
-					"by some miracle, two commands produce the same crc32 checksum, and thus, have the same command ID".to_string(),
+					"by some miracle, two commands produce the same crc32 checksum, \
+						and thus, have the same command ID".to_string(),
 					ExtendedErrorExplanation::custom(vec![
 						InfoExplanation {
 							span: other_span.clone(),
-							content: format!("command {other_name} of {other_layer}: `crc32(\"{other_name}.{other_layer}\") -> {}`", cmd.command_id),
+							content: format!("command {other_name} of {other_layer}: \
+								`crc32(\"{other_name}.{other_layer}\") -> {}`", cmd.command_id),
 							level: InfoLevel::Info
 						},
 						InfoExplanation {
 							span: other_span.clone(),
-							content: format!("command {name} of {layer}: `crc32(\"{name}.{layer}\") -> {}`", cmd.command_id, name=cmd.name, layer=cmd.layer),
+							content: format!("command {name} of {layer}: \
+								`crc32(\"{name}.{layer}\") -> {}`", cmd.command_id, name=cmd.name, layer=cmd.layer),
 							level: InfoLevel::Error
 						}
 					])
