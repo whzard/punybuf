@@ -431,10 +431,20 @@ impl RustCodegen {
 	} */
 	fn gen_serialize_fields(&mut self, fields: &Vec<PBField>, extensible: bool) {
 		let mut has_extensions = false;
+		let mut has_extension_flags = false;
 		for field in fields {
+			if field.attrs.contains_key("@extension_flags") {
+				has_extension_flags = true;
+				continue;
+			}
 			if let Some(flags) = &field.flags {
-				appendf!(self, "        // If you get an error here, this type doesn't support flags.\n");
-				appendf!(self, "        let mut flags: {} = 0.try_into().unwrap();\n", self.gen_reference(&field.value, false));
+				appendf!(self,
+					"        // If you get an error here, this type doesn't support flags.\n"
+				);
+				appendf!(self,
+					"        let mut flags: {} = 0.try_into().unwrap();\n",
+					self.gen_reference(&field.value, false)
+				);
 				for (i, flag) in flags.iter().enumerate() {
 					if flag.value.is_some() {
 						appendf!(self, "        if self.{}.is_some() {{ flags |= 1 << {i} }}\n", flag.name);
@@ -458,10 +468,13 @@ impl RustCodegen {
 				appendf!(self, "        self.{}.serialize(w){}?;\n", field.name, self.maybe_await());
 			}
 		}
-		if extensible && has_extensions {
+		if extensible && (has_extensions || has_extension_flags) {
+			// TODO: this is currently a mess.
 			appendf!(self, "        let real_w = w;\n");
 			appendf!(self, "        let mut bytes = Bytes(Vec::new());\n");
 			appendf!(self, "        let w = &mut bytes.0;\n");
+		}
+		if extensible && has_extensions {
 			// Probably better to do this with a temporary Vec
 			for field in fields {
 				let Some(flags) = &field.flags else { continue };
@@ -476,12 +489,47 @@ impl RustCodegen {
 				}
 			}
 			appendf!(self, "        bytes.serialize(real_w){}?;\n", self.maybe_await());
+		} else if extensible && has_extension_flags {
+			let extension_flags_field = fields.iter().find(
+				|f| f.attrs.contains_key("@extension_flags")
+			).expect("bad state: has_extension_flags, but no extension flags present");
+			appendf!(self,
+				"        // If you get an error here, this type doesn't support flags.\n"
+			);
+			appendf!(self,
+				"        let mut flags: {} = 0.try_into().unwrap();\n",
+				self.gen_reference(&extension_flags_field.value, false)
+			);
+			let flags = extension_flags_field.flags.as_ref()
+				.expect("validator error: @extension_flags has no flags");
+			for (i, flag) in flags.iter().enumerate() {
+				if flag.value.is_some() {
+					appendf!(self,
+						"        if self.{}.is_some() {{ flags |= 1 << {i} }}\n",
+						flag.name
+					);
+				} else {
+					appendf!(self,
+						"        if self.{} {{ flags |= 1 << {i} }}\n",
+						flag.name
+					);
+				}
+			}
+			appendf!(self, "        flags.serialize(w){}?;\n", self.maybe_await());
+			for flag in flags {
+				if flag.value.is_none() { continue }
+				appendf!(self, "        if let Some(ref v) = self.{} {{\n", flag.name);
+				appendf!(self, "            v.serialize(w){}?;\n", self.maybe_await());
+				appendf!(self, "        }}\n");
+				appendf!(self, "        bytes.serialize(real_w){}?;\n", self.maybe_await());
+			}
 		} else if extensible {
 			appendf!(self, "        UInt(0).serialize(w){}?;\n", self.maybe_await());
 		}
 	}
 	fn gen_deserialize_fields(&mut self, fields: &Vec<PBField>, extensible: bool) {
 		for field in fields {
+			if field.attrs.contains_key("@extension_flags") { continue }
 			appendf!(self, "        let field_{} = {}::deserialize(r){}?;\n",
 				field.name, self.gen_reference(&field.value, true),
 				self.maybe_await()
@@ -492,11 +540,22 @@ impl RustCodegen {
 						continue;
 					}
 					if let Some(val) = &flag.value {
-						appendf!(self, "        let flag_{} = if (field_{} & (1 << {i})) != 0 {{\n", flag.name, field.name);
-						appendf!(self, "            Some({}::deserialize(r){}?)\n", self.gen_reference(val, true), self.maybe_await());
-						appendf!(self, "        }} else {{ None }};\n");
+						appendf!(self,
+							"        let flag_{} = if (field_{} & (1 << {i})) != 0 {{\n",
+							flag.name, field.name
+						);
+						appendf!(self,
+							"            Some({}::deserialize(r){}?)\n",
+							self.gen_reference(val, true), self.maybe_await()
+						);
+						appendf!(self,
+							"        }} else {{ None }};\n"
+						);
 					} else {
-						appendf!(self, "        let flag_{} = (field_{} & (1 << {i})) != 0;\n", flag.name, field.name);
+						appendf!(self,
+							"        let flag_{} = (field_{} & (1 << {i})) != 0;\n",
+							flag.name, field.name
+						);
 					}
 				}
 			}
@@ -508,16 +567,57 @@ impl RustCodegen {
 				let Some(flags) = &field.flags else { continue };
 				for (i, flag) in flags.iter().enumerate() {
 					if !flag.attrs.contains_key("@extension") {
+						// fields on @extension_flags shouldn't have the @extension attribute
 						continue;
 					}
 
 					if let Some(val) = &flag.value {
-						appendf!(self, "        let flag_{} = if (field_{} & (1 << {i})) != 0 {{\n", flag.name, field.name);
-						appendf!(self, "            Some({}::deserialize(_extension_reader){}?)\n", self.gen_reference(val, true), self.maybe_await());
-						appendf!(self, "        }} else {{ None }};\n");
+						appendf!(self,
+							"        let flag_{} = if (field_{} & (1 << {i})) != 0 {{\n",
+							flag.name, field.name
+						);
+						appendf!(self,
+							"            Some({}::deserialize(_extension_reader){}?)\n",
+							self.gen_reference(val, true), self.maybe_await()
+						);
+						appendf!(self,
+							"        }} else {{ None }};\n"
+						);
 
 					} else {
-						appendf!(self, "        let flag_{} = (field_{} & (1 << {i})) != 0;\n", flag.name, field.name);
+						appendf!(self,
+							"        let flag_{} = (field_{} & (1 << {i})) != 0;\n",
+							flag.name, field.name
+						);
+					}
+				}
+			}
+
+			if let Some(extension_flags_field) = fields.iter()
+				.find(|f| f.attrs.contains_key("@extension_flags"))
+			{
+				appendf!(self, "        let field_{} = {}::deserialize(_extension_reader){}?;\n",
+					extension_flags_field.name, self.gen_reference(&extension_flags_field.value, true),
+					self.maybe_await()
+				);
+				for (i, flag) in extension_flags_field.flags.as_ref()
+					.expect("validator error: @extension_flags must have flags")
+					.iter().enumerate()
+				{
+					if let Some(val) = &flag.value {
+						appendf!(self,
+							"        let flag_{} = if (field_{} & (1 << {i})) != 0 {{\n",
+							flag.name, extension_flags_field.name);
+						appendf!(self,
+							"            Some({}::deserialize(_extension_reader){}?)\n",
+							self.gen_reference(val, true), self.maybe_await());
+						appendf!(self,
+							"        }} else {{ None }};\n");
+
+					} else {
+						appendf!(self,
+							"        let flag_{} = (field_{} & (1 << {i})) != 0;\n",
+							flag.name, extension_flags_field.name);
 					}
 				}
 			}
@@ -715,10 +815,19 @@ impl RustCodegen {
 				tp.get_attrs().contains_key("@rust:ignore") ||
 				tp.get_attrs().contains_key("@resolve")
 			{
+				if let Some(Some(qualified)) = tp.get_attrs().get("@rust:use") {
+					// treat as alias
+					appendf!(self, "pub type {} = {};\n", self.get_type_name(tp), qualified);
+					continue;
+				}
 				continue;
 			}
 			if tp.get_attrs().contains_key("@map_convertible") {
-				appendf!(self, "impl<K: PBType + std::hash::Hash + Eq, V: PBType> HashMapConvertible<K, V> for {} {{", self.get_type_name(tp));
+				appendf!(
+					self,
+					"impl<K: PBType + std::hash::Hash + Eq, V: PBType> HashMapConvertible<K, V> for {} {{",
+					self.get_type_name(tp)
+				);
 				should_include_hash_map_convertible = true;
 				// TO_MAP contains a leading newline
 				appendf!(self, "{}", TO_MAP);

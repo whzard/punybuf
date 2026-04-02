@@ -34,6 +34,13 @@ Mark this flag or this variant as an extension. [Extensions](Language.md#extensi
 Conflicts with [`@sealed`](#sealed) on the parent struct.  
 Invalid when no [`@default`](#default) variant exists on the enum.
 
+## `@extension_flags`
+> applied to **one flag field** by the **implementation**, checked by the compiler
+
+Mark this field as the extension flag field. Must be a flag field. All other flag fields on the struct must be exhausted. See [Extensions](Language.md#extensions).
+
+Conflicts with [`@sealed`](#sealed) on the parent struct.  
+
 ## `@capability(name)`
 > applied to **commands**, is informative, but may be checked by the RPC implementation
 
@@ -75,3 +82,6 @@ These attributes are, well, implementation-specific and usually only affect one 
 ## Rust
 ### `@rust:ignore`
 Ignores the next type or command.
+
+### `@rust:use(name)`
+Works only on `@builtin`s. Alias this type to the one specified by `name`, where `name` should be a fully qualified type name. That type must already implement the `PBType` trait.

@@ -520,6 +520,20 @@ impl<'d> PunybufValidator<'d> {
 			}
 
 			if flag.attrs.contains_key("@extension") {
+				if owner.get_attrs().contains_key("@extension_flags") {
+					return Err(pb_err!(
+						flag.name_span,
+						format!("an `@extension` flag cannot be defined on an \
+						`@extension_flags` field."),
+						ExtendedErrorExplanation::error_and(vec![
+							InfoExplanation {
+								span: owner.get_name().1.clone(),
+								level: InfoLevel::Info,
+								content: format!("`@extension_flags` marked here")
+							}
+						])
+					));
+				}
 				extension_begin = Some((&flag.name, &flag.name_span));
 			} else if let Some((_, ext_span)) = extension_begin {
 				return Err(pb_err!(
@@ -543,6 +557,7 @@ impl<'d> PunybufValidator<'d> {
 	}
 	pub fn validate_struct(&mut self, owner: &Owner, fields: &Vec<PBField>) -> Result<(), PunybufError> {
 		let mut seen_names: Vec<(&str, &Span)> = vec![];
+		let mut can_add_extension_flags = true;
 		for field in fields {
 			if field.attrs.contains_key("@extension") {
 				return Err(pb_err!(
@@ -614,6 +629,8 @@ impl<'d> PunybufValidator<'d> {
 								}
 							])
 						));
+					} else if (flags.len() < max_amount) {
+						can_add_extension_flags = false;
 					}
 					Err(FlagsAttrError::Other(pbe)) => return Err(pbe),
 					Err(FlagsAttrError::NoAttribute(decl)) => {
@@ -699,6 +716,39 @@ impl<'d> PunybufValidator<'d> {
 					},
 				}
 				self.validate_flags(owner, flags)?;
+			}
+		}
+		
+		for field in fields {
+			if field.attrs.contains_key("@extension_flags") {
+				if !can_add_extension_flags {
+					return Err(pb_err!(
+						field.name_span,
+						format!(
+							"cannot mark field `{}` as \
+							@extension_flags, because not all flag \
+							fields on `{}` are exhausted.",
+							field.name, owner.get_name().0
+						),
+						ExtendedErrorExplanation::error_and(vec![
+							InfoExplanation {
+								span: owner.get_name().1.clone(),
+								level: InfoLevel::Tip,
+								content: format!(
+									"`{}` is defined here", owner.get_name().0
+								),
+							}
+						])
+					));
+				}
+				if field.flags.is_none() {
+					return Err(pb_err!(
+						field.name_span,
+						format!(
+							"fields marked @extension_flags must be flag fields"
+						)
+					))
+				}
 			}
 		}
 		return Ok(());

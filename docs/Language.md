@@ -41,7 +41,7 @@ This type is an enum, meaning it supports selecting one of the predefined values
 ```pbd
 UserMood = [
 	Neutral, Happy, Sad,
-	TinkingAbout: String
+	ThinkingAbout: String
 ]
 ```
 If the selected enum variant is `ThinkingAbout`, then a `String` will be serialized right after the enum discriminant (number).
@@ -65,7 +65,7 @@ User = {
 	favorite_things: Array<String>
 	current_mood: UserMood [
 		Neutral, Happy, Sad,
-		TinkingAbout: String
+		ThinkingAbout: String
 	]
 }
 ```
@@ -204,7 +204,7 @@ Extensions allow adding more fields to already existing structs and adding varia
 ### Extending structs
 By default, all structs are extensible. Internally, that just means they have an extra [`UInt`](./BinaryFormat.md#uint) at the end, representing the size in bytes of the extensions, so that outdated clients can skip over the unsupported extensions.
 
-The best way of defining extensions is reusing existing [flag fields](#flag-fields). Since flags are just 1s and 0s interpreted in a special way, you can add boolean flags without breaking compatibility.  
+The best way of defining extensions is reusing existing [flag fields](#flag-fields). Since flags are just 1s and 0s interpreted in a special way, you can add boolean flags to the end without breaking compatibility.  
 If you want to add a flag with an optional value, you can define it using the [`@extension`](Attributes.md#extension) attribute.
 ```pbd
 User = {
@@ -231,6 +231,198 @@ Each extension is defined on an existing flag field and its presence is indicate
 
 Extensions on flag fields may only be defined until the flag fields are exhausted. If our flag field's type is `U8`, for example, it may only hold 8 bits and thus cannot carry more than 8 flags. If our flag field is exhausted, we can't add extensions to it.
 
-**TODO: see [about extension fields](BinaryFormat.md#extending-structs)**
+After we've exhausted all flag fields, not all hope is lost. We can still extend our struct further, by using the [`@extension_flags`](Attributes.md#extension_flags) attribute.
 
-**TODO: enum extensions, additional struct extensions, layers**
+```pbd
+User = {
+	name: String
+	age: UInt
+	id: U64
+	favorite_things: Array<String>
+	current_mood: UserMood
+
+	flags: U8.{
+		is_friend?
+		likes_cats?
+		preferred_color?: Color {
+			r: U8  g: U8  b: U8
+		}
+		likes_punybuf? # <-- here
+		@extension     # <-- and here
+		favorite_pets?: Array<String>
+		@extension
+		likes_dogs?
+		@extension
+		likes_other_people?
+		@extension
+		is_happy?
+	}
+	# the flags field is exhausted, so we can't add anything to it anymore
+	# but we have another chance:
+	@extension_flags
+	flags_extension: UInt.{
+		friends_with: Array<String>
+	}
+}
+```
+
+We don't need to mark every flag on our thing as `@extension`, since we've defined an `@extension_flags` field.
+
+## Extending enums
+By default, enums are not extensible. To make an enum extensible, mark one of its variants as [`@default`](Attributes.md#default). This variant must not take an associated value. Then, you can add new enum variants by marking them as `@extension`.
+
+```pbd
+UserMood = [
+	@default
+	Neutral,
+	Happy, Sad,
+	ThinkingAbout: String,
+	@extension
+	Scared,
+	@extension
+	ConcernedAbout: String
+]
+```
+
+To an outdated deserializer, who doesn't know about the extensions, the variants `Scared` and `ConcernedAbout` will render as `Neutral`. Note that the variant `ConcernedAbout: String` will lose its data when deserialized as `Neutral`.
+
+## Layers
+Layers are a way to break binary compatibility and get away with it. Layers are negotiated *out-of-band*. With layers, you may remove fields, change structs, enums in any way, change command IDs, change return values and errors. The downside is that to support older versions you must still handle the old commands.
+
+To define a layer, simply put a `layer` declaration before the required commands and types:
+
+```pbd
+layer 0: # <- implicit at the beginning of every file, so useless here
+
+@sealed # so we can't extend it anymore
+CoolStruct = {
+	coolField: String
+}
+
+coolCommand: {
+	argument: CoolStruct
+} -> Void
+```
+
+Every `include` resets the current layer to `0`. This is so you don't accidentally time-travel (don't worry, the compiler will catch it anyway), but it isn't yet implemented in the best way. TODO: ideally, every file would begin with layer 0 instead.
+
+### Negotiating layers
+Layer negotiation can be done at any level of the protocol, but must be done by you. Punybuf libraies (at least for now) don't provide any facilities to make this process less painful. It can be as simple as that:
+
+```pbd
+#[ The server sets the maximum supported layer. ]
+negotiateLayer: {
+	maximum_layer: UInt
+} -> UInt
+```
+
+Or it can be done before the punybuf RPC even runs, such as in a URL of a websocket request.
+
+### Evolving the protocol with layers
+You'll soon find out why using [extensions](#Extensions) is preferrable. :)
+
+Layers just simplify a process of simply copying the file and changing things inside. To evolve a command, just redefine it on a new layer:
+
+```pbd
+layer 1:
+coolCommand: {
+	argument: CoolStruct
+	additional_info: String
+} -> Done ![InvalidArgument]
+```
+
+As a result, two commands will be generated: `coolCommand#0` and `coolCommand#1`. You can imitate this process yourself:
+```pbd
+# equivalent:
+coolCommand_LAYER0: {
+	argument: CoolStruct_LAYER0
+} -> Void
+
+coolCommand_LAYER1: {
+	argument: CoolStruct_LAYER0
+	additional_info: String
+} -> Done ![InvalidArgument]
+```
+
+However, the point of layers is that they automatically track dependencies. Redefining structs, on which commands and other structs depend, will regenerate their definitions automatically.
+
+So, all you need to write is this:
+```pbd
+layer 2:
+# unseal it, why not?
+CoolStruct = {
+	# coolField: String <- no longer here
+	evilField: Array<UInt>
+}
+```
+
+And the in return, a new `coolCommand` will be generated, since punybuf knows, what it depends on:
+```pbd
+#equivalent to:
+CoolStruct_LAYER2 = {
+	# coolField: String <- no longer here
+	evilField: Array<UInt>
+}
+coolCommand_LAYER2: {
+	argument: CoolStruct_LAYER2
+	additional_info: String
+} -> Done ![InvalidArgument]
+```
+
+In turn, layers allow us to break binary compatibility when we need it, while still both retaining support for older versions and not duplicating a huge amount of code.
+
+We've written:
+```pbd
+layer 0:
+@sealed # so we can't extend it anymore
+CoolStruct = {
+	coolField: String
+}
+
+coolCommand: {
+	argument: CoolStruct
+} -> Void
+
+layer 1:
+coolCommand: {
+	argument: CoolStruct
+	additional_info: String
+} -> Done ![InvalidArgument]
+
+layer 2:
+# unseal it, why not?
+CoolStruct = {
+	# coolField: String <- no longer here
+	evilField: Array<UInt>
+}
+```
+
+And we generated equivalent code to this:
+```pbd
+@sealed # so we can't extend it anymore
+CoolStruct_LAYER0 = {
+	coolField: String
+}
+
+coolCommand_LAYER0: {
+	argument: CoolStruct_LAYER0
+} -> Void
+
+coolCommand_LAYER1: {
+	argument: CoolStruct_LAYER0
+	additional_info: String
+} -> Done ![InvalidArgument]
+
+CoolStruct_LAYER2 = {
+	# coolField: String <- no longer here
+	evilField: Array<UInt>
+}
+coolCommand_LAYER2: {
+	argument: CoolStruct_LAYER2
+	additional_info: String
+} -> Done ![InvalidArgument]
+```
+
+This, although saves some headache, is still really annoying, since in your actual code, you'll need to handle all three versions of the same command. There's simply no way around it if you want to break binary compatibility. So, this is why it's better to use extensions so you don't have to break binary compatibility.
+
+**TODO: capabilities**
