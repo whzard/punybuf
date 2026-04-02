@@ -336,10 +336,8 @@ Struct = {
 ```
 The EL comprises the lengths of all set extensions.
 
-**TODO: the following is not yet supported. Must implement checks for either flag field exhaustion, or no flags and convenience properties on the IR. Decide whether we allow multiple extension flag fields. Decide whether supporting this at all is worth it. Maybe only structs with flag fields may be extended until they are exhausted. Maybe only structs without flag fields may have `@extension_flags`.**
-
 **If a struct doesn't have a flag field, or if they're exhausted,**  
-the user defines an `@extension_flags` field that puts this flag field after the EL **AND** after all previous extensions on existing flag fields.
+the user defines an `@extension_flags` field that puts this flag field after the EL **AND** after all previous extensions on existing flag fields. All other flag fields must be exhausted.
 
 So, this...
 ```
@@ -388,7 +386,6 @@ And to an outdated deserializer will look like this:
 {Value} 00001010 {String} {n} {Value} {......ignore.this......}
                               |---------------n---------------|
 ```
-**TODO: see above**  
 If no `@extension_flags` are defined, implementations MUST NOT include an all-zero flags value after the EL, and instead must omit it entirely.  
 This is to preserve the property of "one way to represent one value"
 
