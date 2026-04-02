@@ -1,4 +1,4 @@
-use std::{collections::HashMap, u32};
+use std::{collections::HashMap, fmt::Display, u32};
 
 use crate::{
 	errors::{
@@ -79,6 +79,21 @@ impl<'a> Owner<'a> {
 			Self::TypeOwner(tp) => tp.get_layer(),
 			Self::CommandOwner(cmd) => &cmd.layer
 		}
+	}
+}
+
+#[derive(PartialEq, Eq)]
+enum SeenNameType {
+	Field, Flag
+}
+
+impl Display for SeenNameType {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(match self {
+			Self::Field => "field",
+			Self::Flag => "flag"
+		})?;
+		Ok(())
 	}
 }
 
@@ -462,38 +477,57 @@ impl<'d> PunybufValidator<'d> {
 			if declared_params.contains(&ga.as_str()) {
 				return Err(pb_err!(
 					span,
-					format!("generic parameter `{ga}` defined twice")
+					format!("generic parameter `{ga}` defined multiple times")
 				));
 			}
 			declared_params.push(ga);
 		}
 		Ok(())
 	}
-	pub fn validate_flags(&self, owner: &Owner, flags: &Vec<PBFieldFlag>) -> Result<(), PunybufError> {
+	fn validate_flags<'n, 'f: 'n>(
+		&self, owner: &Owner, flags: &'f Vec<PBFieldFlag>,
+		seen_names: &mut Vec<(&'n str, &'n Span, SeenNameType)>
+	)
+		-> Result<(), PunybufError>
+	{
 		let is_sealed = owner.get_attrs().contains_key("@sealed");
 		let mut extension_begin = None::<(&str, &Span)>;
 
-		let mut seen_names: Vec<(&str, &Span)> = vec![];
 		for flag in flags {
 			if let Some(dupe) = seen_names.iter().find(|n| *n.0 == flag.name) {
+				let mut expl = ExtendedErrorExplanation::custom(vec![
+					InfoExplanation {
+						span: dupe.1.clone(),
+						content: format!(
+							"{} `{}` defined here first",
+							dupe.2,
+							dupe.0
+						),
+						level: InfoLevel::Info
+					},
+					InfoExplanation {
+						span: flag.name_span.clone(),
+						content: format!("`{}` defined here again", dupe.0),
+						level: InfoLevel::Error
+					},
+				]);
+				if dupe.2 != SeenNameType::Flag {
+					expl.after_error.push(InfoExplanation {
+						span: owner.get_name().1.clone(),
+						content: format!(
+							"flags and struct fields share the namespace `{}`",
+							owner.get_name().0
+						),
+						level: InfoLevel::Tip
+					});
+				}
 				return Err(pb_err!(
 					flag.name_span,
-					format!("flag `{}` defined twice", flag.name),
-					ExtendedErrorExplanation::custom(vec![
-						InfoExplanation {
-							span: dupe.1.clone(),
-							content: format!("`{}` defined here first", dupe.0),
-							level: InfoLevel::Info
-						},
-						InfoExplanation {
-							span: flag.name_span.clone(),
-							content: format!("`{}` defined here again", dupe.0),
-							level: InfoLevel::Error
-						},
-					])
+					format!("name `{}` defined multiple times", flag.name),
+					expl
 				));
 			}
-			seen_names.push((&flag.name, &flag.name_span));
+			seen_names.push((&flag.name, &flag.name_span, SeenNameType::Flag));
 
 			if is_sealed && flag.attrs.contains_key("@extension") {
 				return Err(pb_err!(
@@ -556,7 +590,7 @@ impl<'d> PunybufValidator<'d> {
 		Ok(())
 	}
 	pub fn validate_struct(&mut self, owner: &Owner, fields: &Vec<PBField>) -> Result<(), PunybufError> {
-		let mut seen_names: Vec<(&str, &Span)> = vec![];
+		let mut seen_names: Vec<(&str, &Span, SeenNameType)> = vec![];
 		let mut can_add_extension_flags = true;
 		for field in fields {
 			if field.attrs.contains_key("@extension") {
@@ -566,24 +600,39 @@ impl<'d> PunybufValidator<'d> {
 				));
 			}
 			if let Some(already_decl) = seen_names.iter().find(|n| *n.0 == field.name) {
+				let mut expl = ExtendedErrorExplanation::custom(vec![
+					InfoExplanation {
+						span: already_decl.1.clone(),
+						content: format!(
+							"{} `{}` defined here first",
+							already_decl.2,
+							already_decl.0
+						),
+						level: InfoLevel::Info
+					},
+					InfoExplanation {
+						span: field.name_span.clone(),
+						content: format!("`{}` defined here again", already_decl.0),
+						level: InfoLevel::Error
+					},
+				]);
+				if already_decl.2 != SeenNameType::Field {
+					expl.after_error.push(InfoExplanation {
+						span: owner.get_name().1.clone(),
+						content: format!(
+							"flags and struct fields share the namespace `{}`",
+							owner.get_name().0
+						),
+						level: InfoLevel::Tip
+					});
+				}
 				return Err(pb_err!(
 					already_decl.1,
-					format!("field `{}` defined twice", already_decl.0),
-					ExtendedErrorExplanation::custom(vec![
-						InfoExplanation {
-							span: already_decl.1.clone(),
-							content: format!("`{}` defined here first", already_decl.0),
-							level: InfoLevel::Info
-						},
-						InfoExplanation {
-							span: field.name_span.clone(),
-							content: format!("`{}` defined here again", already_decl.0),
-							level: InfoLevel::Error
-						},
-					])
+					format!("name `{}` defined multiple times", already_decl.0),
+					expl
 				));
 			}
-			seen_names.push((&field.name, &field.name_span));
+			seen_names.push((&field.name, &field.name_span, SeenNameType::Field));
 
 			let field_ref_def = self.validate_reference(&field.value, owner)?;
 			if let Some(flags) = &field.flags {
@@ -715,7 +764,7 @@ impl<'d> PunybufValidator<'d> {
 						))
 					},
 				}
-				self.validate_flags(owner, flags)?;
+				self.validate_flags(owner, flags, &mut seen_names)?;
 			}
 		}
 		
@@ -762,7 +811,7 @@ impl<'d> PunybufValidator<'d> {
 			if let Some(already_decl) = seen_names.iter().find(|n| *n.0 == variant.name) {
 				return Err(pb_err!(
 					variant.name_span,
-					format!("enum variant `{}` defined twice", already_decl.0),
+					format!("enum variant `{}` defined multiple times", already_decl.0),
 					ExtendedErrorExplanation::custom(vec![
 						InfoExplanation {
 							span: already_decl.1.clone(),
@@ -915,7 +964,7 @@ impl<'d> PunybufValidator<'d> {
 			if let Some(already_decl) = declared_things.iter().find(|x| x.0 == tp.get_name().0 && x.1 == tp.get_layer()) {
 				return Err(pb_err!(
 					already_decl.2,
-					format!("`{}` declared twice", already_decl.0),
+					format!("`{}` declared multiple times", already_decl.0),
 					ExtendedErrorExplanation::custom(vec![
 						InfoExplanation {
 							span: already_decl.2.clone(),
@@ -953,7 +1002,7 @@ impl<'d> PunybufValidator<'d> {
 				if already_decl.1 == &cmd.layer {
 					return Err(pb_err!(
 						already_decl.2,
-						format!("`{}` declared twice", already_decl.0),
+						format!("`{}` declared multiple times", already_decl.0),
 						ExtendedErrorExplanation::custom(vec![
 							InfoExplanation {
 								span: already_decl.2.clone(),

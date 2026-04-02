@@ -460,6 +460,7 @@ impl<'parser> Parser<'parser> {
 		let mut fields = vec![];
 		let mut peekable = tokens.iter().peekable();
 
+		let mut anonymous_flags_number = 0;
 		let mut next_doc: Option<&str> = None;
 		let mut next_attrs = HashMap::new();
 		while let Some(token) = peekable.next() {
@@ -474,9 +475,11 @@ impl<'parser> Parser<'parser> {
 					next_doc = Some(doc);
 				}
 				TokenData::Symbol(field_name) => {
-					let next = peekable.next().ok_or(parser_err!(token.span, "expected a `:`, found nothing"))?;
+					let next = peekable.next().ok_or(parser_err!(
+						token.span,
+						"expected a `:`, found nothing"
+					))?;
 					match next.data {
-						TokenData::Colon => {},
 						TokenData::Question => {
 							if let Some(before_inline_decl) = before_inline_decl {
 								return Err(PunybufError {
@@ -485,7 +488,10 @@ impl<'parser> Parser<'parser> {
 									explanation: Some(
 										ExtendedErrorExplanation::error_and(vec![
 											InfoExplanation {
-												content: format!("if this is inteded to be a flag, put a dot (`.`) after this inline declaration's identifier"),
+												content: format!(
+													"if this is inteded to be a flag, \
+													put a dot (`.`) after this inline declaration's identifier"
+												),
 												span: before_inline_decl.clone(),
 												level: InfoLevel::Tip,
 											}
@@ -493,48 +499,137 @@ impl<'parser> Parser<'parser> {
 									)
 								});
 							} else {
-								return Err(parser_err!(next.span, "expected a `:` after the field name, got `?`; optional fields may only be defined \
-								on flag fields"));
+								return Err(parser_err!(
+									next.span, 
+									"expected a `:` after the field name, \
+									got `?`; optional fields may only be defined \
+									on flag fields"
+								));
 							}
 						}
-						_ => {
-							return Err(parser_err!(next.span, "expected a `:` after the field name for its type, got `{next}`"));
+						TokenData::AngleBrackets(_) => {
+							if let Some(
+								Token { data: TokenData::Dot, span: _ }
+							) = peekable.next() {
+								return Err(pb_err!(
+									next.span,
+									"generic parameters cannot be defined on the type of \
+									anonymous flags".to_string(),
+									ExtendedErrorExplanation::error_and(vec![
+										InfoExplanation {
+											span: next.span.clone(),
+											level: InfoLevel::Tip,
+											content: format!(
+												"this is a technichal limitation of the \
+												pbd compiler; try writing `flags: {}<...>.{{ ... }}`",
+												field_name
+											),
+										}
+									])
+								));
+							} else {
+								return Err(parser_err!(
+									next.span,
+									"expected a `:` after the field name for its type, got `{next}`"
+								));
+							}
 						}
-					}
-					let refr = Parser::parse_reference(&mut peekable, &next.span, layer)?;
-					let mut field_flags = None;
-					match peekable.peek() {
-						None => {},
-						Some(dot) => {
-							if dot.data == TokenData::Dot {
-								peekable.next();
-								let Some(curly) = peekable.next() else {
-									return Err(parser_err!(token.span, "expected `{{}}` after `{}.`, found nothing - remove the period? (`.`)", refr.get_name()));
-								};
-								let inner = match &curly.data {
-									TokenData::CurlyBraces(x) => x,
-									_ => {
-										return Err(parser_err!(curly.span, "expected `{{}}` after `{}.` - remove the period? (`.`)", refr.get_name()));
+						TokenData::Dot => {
+							let refr = ValueReference::Reference {
+								name: field_name.clone(),
+								name_span: token.span.clone(),
+								generics: vec![],
+								generic_span: Span::impossible()
+							};
+							let Some(curly) = peekable.next() else {
+								return Err(parser_err!(
+									token.span,
+									"expected `{{}}` after `{}.`, \
+									found nothing - remove the period? (`.`)",
+									refr.get_name()
+								));
+							};
+							let inner = match &curly.data {
+								TokenData::CurlyBraces(x) => x,
+								_ => {
+									return Err(parser_err!(
+										curly.span,
+										"expected `{{}}` after `{}.` - \
+										remove the period? (`.`)",
+										refr.get_name()
+									));
+								}
+							};
+							let flags = Some(Parser::parse_flags(&inner, layer)?);
+							fields.push(Field {
+								name: format!("{anonymous_flags_number}_flags"),
+								name_span: token.span.clone(),
+								value: refr,
+								flags,
+								attrs: next_attrs,
+								doc: next_doc.unwrap_or("").to_string()
+							});
+							next_doc = None;
+							next_attrs = HashMap::new();
+							anonymous_flags_number += 1;
+						}
+						TokenData::Colon => {
+							let refr = Parser::parse_reference(&mut peekable, &next.span, layer)?;
+							let mut field_flags = None;
+							match peekable.peek() {
+								None => {},
+								Some(dot) => {
+									if dot.data == TokenData::Dot {
+										peekable.next();
+										let Some(curly) = peekable.next() else {
+											return Err(parser_err!(
+												token.span,
+												"expected `{{}}` after `{}.`, \
+												found nothing - remove the period? (`.`)",
+												refr.get_name()
+											));
+										};
+										let inner = match &curly.data {
+											TokenData::CurlyBraces(x) => x,
+											_ => {
+												return Err(parser_err!(
+													curly.span,
+													"expected `{{}}` after `{}.` - \
+													remove the period? (`.`)",
+													refr.get_name()
+												));
+											}
+										};
+										let flags = Parser::parse_flags(&inner, layer)?;
+										field_flags = Some(flags);
 									}
-								};
-								let flags = Parser::parse_flags(&inner, layer)?;
-								field_flags = Some(flags);
+								}
 							}
+							fields.push(Field {
+								name: field_name.to_string(),
+								name_span: token.span.clone(),
+								value: refr,
+								flags: field_flags,
+								attrs: next_attrs,
+								doc: next_doc.unwrap_or("").to_string()
+							});
+							next_doc = None;
+							next_attrs = HashMap::new();
+						},
+						_ => {
+							return Err(parser_err!(
+								next.span,
+								"expected a `:` after the field name for its type, got `{next}`"
+							));
 						}
-					}
-					fields.push(Field {
-						name: field_name.to_string(),
-						name_span: token.span.clone(),
-						value: refr,
-						flags: field_flags,
-						attrs: next_attrs,
-						doc: next_doc.unwrap_or("").to_string()
-					});
-					next_doc = None;
-					next_attrs = HashMap::new();
+					}	
 				}
 				_ => {
-					return Err(parser_err!(token.span, "unexpected token `{token}`; a field name should be followed by `:` and its type"));
+					return Err(parser_err!(
+						token.span,
+						"unexpected token `{token}`; \
+						a field name should be followed by `:` and its type"
+					));
 				}
 			}
 		}
@@ -542,7 +637,9 @@ impl<'parser> Parser<'parser> {
 		Ok(FlexibleDeclarationValue::StructDeclaration { inline: false, fields, layer })
 	}
 
-	fn parse_enum_decl(tokens: &Vec<Token>, start_at_one: bool, layer: u32) -> Result<FlexibleDeclarationValue, PunybufError> {
+	fn parse_enum_decl(tokens: &Vec<Token>, start_at_one: bool, layer: u32)
+		-> Result<FlexibleDeclarationValue, PunybufError>
+	{
 		let mut variants = vec![];
 		let mut peekable = tokens.iter().peekable();
 
@@ -597,7 +694,9 @@ impl<'parser> Parser<'parser> {
 		Ok(FlexibleDeclarationValue::EnumDeclaration { inline: false, variants, layer })
 	}
 
-	fn parse_value_enum_decl(tokens: &Vec<Token>, start_at_one: bool, layer: u32) -> Result<FlexibleDeclarationValue, PunybufError> {
+	fn parse_value_enum_decl(tokens: &Vec<Token>, start_at_one: bool, layer: u32)
+		-> Result<FlexibleDeclarationValue, PunybufError>
+	{
 		let mut variants = vec![];
 		let mut peekable = tokens.iter().peekable();
 
@@ -629,12 +728,17 @@ impl<'parser> Parser<'parser> {
 					match peekable.next() {
 						None | Some(Token { data: TokenData::Comma, span: _ }) => {},
 						Some(Token { data: _, span }) => {
-							return Err(parser_err!(span, "expected a comma (`,`) to separate value-enum variants"));
+							return Err(parser_err!(
+								span, "expected a comma (`,`) to separate value-enum variants"
+							));
 						}
 					}
 				}
 				_ => {
-					return Err(parser_err!(tk.span, "unexpected token `{tk}`, value-enum variants must be separated by `,`"));
+					return Err(parser_err!(
+						tk.span,
+						"unexpected token `{tk}`, value-enum variants must be separated by `,`"
+					));
 				}
 			}
 		}
@@ -642,7 +746,9 @@ impl<'parser> Parser<'parser> {
 		Ok(FlexibleDeclarationValue::ValueEnumDeclaration { inline: false, variants, layer })
 	}
 
-	fn parse_flags(tokens: &Vec<Token>, layer: u32) -> Result<Vec<FieldFlag>, PunybufError> {
+	fn parse_flags(tokens: &Vec<Token>, layer: u32)
+		-> Result<Vec<FieldFlag>, PunybufError>
+ 	{
 		let mut peekable = tokens.iter().peekable();
 		let mut flags = Vec::new();
 
@@ -661,9 +767,13 @@ impl<'parser> Parser<'parser> {
 					next_doc = Some(doc);
 				}
 				TokenData::Symbol(flag_name) => {
-					let question = peekable.next().ok_or(parser_err!(token.span, "expected a `?`, found nothing"))?;
+					let question = peekable.next().ok_or(parser_err!(
+						token.span, "expected a `?`, found nothing"
+					))?;
 					if question.data != TokenData::Question {
-						return Err(parser_err!(token.span, "expected a `?` after the optional field's name"));
+						return Err(parser_err!(
+							token.span, "expected a `?` after the optional field's name"
+						));
 					}
 
 					let mut refr = None;
@@ -680,12 +790,18 @@ impl<'parser> Parser<'parser> {
 										explanation: Some(
 											ExtendedErrorExplanation::error_and(vec![
 												InfoExplanation {
-													content: format!("try removing this period, to make `{flag_name}` into a regular field"),
+													content: format!(
+														"try removing this period \
+														to make `{flag_name}` into a regular field"
+													),
 													span: dot_span.clone(),
 													level: InfoLevel::Tip,
 												},
 												InfoExplanation {
-													content: format!("...or try defining `{flag_name}`'s type so that it contains a flag field"),
+													content: format!(
+														"...or try defining `{flag_name}`'s \
+														type so that it contains a flag field"
+													),
 													// if this is reached, refr is always `Some(...)`
 													span: refr.unwrap().get_name_span().clone(),
 													level: InfoLevel::Tip,
@@ -710,12 +826,18 @@ impl<'parser> Parser<'parser> {
 					next_attrs = HashMap::new();
 				}
 				TokenData::Question => {
-					return Err(parser_err!(token.span, "misplaced `?` (expected an identifier) - \
-					have you forgotten to define a type for the previous flag?"));
+					return Err(parser_err!(
+						token.span,
+						"misplaced `?` (expected an identifier) - \
+						have you forgotten to define a type for the previous flag?"
+					));
 				}
 				_ => {
-					return Err(parser_err!(token.span, "expected an identifier for a optional field name, got `{token}`; \
-					a optional field identifier should be have a `?` at the end"));
+					return Err(parser_err!(
+						token.span,
+						"expected an identifier for a optional field name, got `{token}`; \
+						a optional field identifier should be have a `?` at the end"
+					));
 				}
 			}
 		}
@@ -724,7 +846,9 @@ impl<'parser> Parser<'parser> {
 	}
 
 	/// Consumes the next token, which is expected to be a Symbol
-	fn parse_reference(peekable: &mut Peekable<Iter<Token>>, before_sym: &Span, layer: u32) -> Result<ValueReference, PunybufError> {
+	fn parse_reference(peekable: &mut Peekable<Iter<Token>>, before_sym: &Span, layer: u32)
+		-> Result<ValueReference, PunybufError>
+	{
 		let thing = peekable.next().ok_or(parser_err!(before_sym, "expected an identifier, got nothing"))?;
 		let name = match &thing.data {
 			TokenData::Symbol(x) => x,

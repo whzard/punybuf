@@ -136,6 +136,28 @@ User = {
 }
 ```
 
+Unless it's necessary, there's no point in naming the flag field, so the name may be omitted along with the colon:
+```pbd
+User = {
+	name: String
+	age: UInt
+	id: U64
+	favorite_things: Array<String>
+	current_mood: UserMood
+
+	# look ma, no name!
+	U8.{
+		is_friend?
+		likes_cats?
+		preferred_color?: Color {
+			r: U8  g: U8  b: U8 # yes, neither semilcolons nor line breaks are required
+		}
+	}
+}
+```
+
+This is called an anonymous flag field.
+
 ### Aliases
 Sometimes, if we're using a type often (or if we want to give more meaning to a type), we might want to alias a type. Creating an alias is as simple as:
 ```pbd
@@ -214,7 +236,7 @@ User = {
 	favorite_things: Array<String>
 	current_mood: UserMood
 
-	flags: U8.{
+	U8.{
 		is_friend?
 		likes_cats?
 		preferred_color?: Color {
@@ -241,7 +263,7 @@ User = {
 	favorite_things: Array<String>
 	current_mood: UserMood
 
-	flags: U8.{
+	U8.{
 		is_friend?
 		likes_cats?
 		preferred_color?: Color {
