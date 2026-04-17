@@ -1,0 +1,15 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@flags(64)
+Flags = Flags
+
+SomeStruct = {
+	normal_flags: Flags.{}
+	Flags.{
+		flag_1?: Builtin
+		flag_2?
+	}
+	more_normal_flags: Flags.{}
+}

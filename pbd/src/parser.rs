@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::{iter::Peekable, slice::Iter, vec};
 
 use crate::errors::{
-	parser_err, pb_err, ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError,
+	parser_err, pb_err, ErrorInfo, Diagnostic, InfoLevel, PunybufError,
 };
 
 use crate::lexer::{Span, Token, TokenData};
 
 #[derive(Debug)]
 #[allow(unused)]
-pub enum ValueReference {
+pub(crate) enum ValueReference {
 	Reference {
 		name: String,
 		name_span: Span,
@@ -24,13 +24,13 @@ pub enum ValueReference {
 	}
 }
 impl ValueReference {
-	pub fn get_name(&self) -> &str {
+	pub(crate) fn get_name(&self) -> &str {
 		match &self {
 			ValueReference::InlineDeclaration { symbol, decl: _, name_span: _, decl_span: _ } => symbol,
 			ValueReference::Reference { name, generics: _, name_span: _, generic_span: _ } => name
 		}
 	}
-	pub fn get_name_span(&self) -> &Span {
+	pub(crate) fn get_name_span(&self) -> &Span {
 		match &self {
 			ValueReference::InlineDeclaration { symbol: _, decl: _, name_span, decl_span: _ } => name_span,
 			ValueReference::Reference { name: _, generics: _, name_span, generic_span: _ } => name_span
@@ -40,48 +40,48 @@ impl ValueReference {
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct FieldFlag {
-	pub name: String,
-	pub name_span: Span,
-	pub value: Option<ValueReference>,
-	pub attrs: HashMap<String, Option<String>>,
-	pub doc: String,
+pub(crate) struct FieldFlag {
+	pub(crate) name: String,
+	pub(crate) name_span: Span,
+	pub(crate) value: Option<ValueReference>,
+	pub(crate) attrs: HashMap<String, Option<String>>,
+	pub(crate) doc: String,
 }
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct Field {
-	pub name: String,
-	pub name_span: Span,
-	pub value: ValueReference,
-	pub flags: Option<Vec<FieldFlag>>,
-	pub attrs: HashMap<String, Option<String>>,
-	pub doc: String,
+pub(crate) struct Field {
+	pub(crate) name: String,
+	pub(crate) name_span: Span,
+	pub(crate) value: ValueReference,
+	pub(crate) flags: Option<Vec<FieldFlag>>,
+	pub(crate) attrs: HashMap<String, Option<String>>,
+	pub(crate) doc: String,
 }
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct EnumVariant {
-	pub name: String,
-	pub name_span: Span,
-	pub discriminant: u8,
-	pub value: Option<ValueReference>,
-	pub attrs: HashMap<String, Option<String>>,
-	pub doc: String,
+pub(crate) struct EnumVariant {
+	pub(crate) name: String,
+	pub(crate) name_span: Span,
+	pub(crate) discriminant: u8,
+	pub(crate) value: Option<ValueReference>,
+	pub(crate) attrs: HashMap<String, Option<String>>,
+	pub(crate) doc: String,
 }
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct ValueEnumVariant {
-	pub discriminant: u8,
-	pub value: ValueReference,
-	pub attrs: HashMap<String, Option<String>>,
-	pub doc: String,
+pub(crate) struct ValueEnumVariant {
+	pub(crate) discriminant: u8,
+	pub(crate) value: ValueReference,
+	pub(crate) attrs: HashMap<String, Option<String>>,
+	pub(crate) doc: String,
 }
 
 #[derive(Debug)]
 #[allow(unused)]
-pub enum FlexibleDeclarationValue {
+pub(crate) enum FlexibleDeclarationValue {
 	StructDeclaration {
 		inline: bool,
 		layer: u32,
@@ -101,7 +101,7 @@ pub enum FlexibleDeclarationValue {
 
 #[derive(Debug)]
 #[allow(unused)]
-pub enum CommandArgument {
+pub(crate) enum CommandArgument {
 	None,
 	Reference(ValueReference),
 	Struct {
@@ -111,7 +111,7 @@ pub enum CommandArgument {
 
 #[derive(Debug)]
 #[allow(unused)]
-pub enum DeclarationValue {
+pub(crate) enum DeclarationValue {
 	Flexible {
 		val: FlexibleDeclarationValue,
 		val_span: Span,
@@ -137,12 +137,16 @@ pub enum DeclarationValue {
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct Declaration {
-	pub symbol: String,
-	pub symbol_span: Span,
-	pub value: DeclarationValue,
-	pub attrs: HashMap<String, Option<String>>,
-	pub doc: String
+pub(crate) struct Declaration {
+	// For now these are staying as
+	// pub(crate), but
+	// TODO?: in the future, make them part of the
+	// API?
+	pub(crate) symbol: String,
+	pub(crate) symbol_span: Span,
+	pub(crate) value: DeclarationValue,
+	pub(crate) attrs: HashMap<String, Option<String>>,
+	pub(crate) doc: String
 }
 
 pub struct Parser<'parser> {
@@ -172,13 +176,13 @@ impl<'parser> Parser<'parser> {
 						return Err(pb_err!(
 							tk.span,
 							format!("documentation defined twice"),
-							ExtendedErrorExplanation::custom(vec![
-								InfoExplanation {
+							ErrorInfo::custom(vec![
+								Diagnostic {
 									span: first_span.clone(),
 									content: format!("documentation defined here first"),
 									level: InfoLevel::Info
 								},
-								InfoExplanation {
+								Diagnostic {
 									span: tk.span.clone(),
 									content: format!("...then defined here again"),
 									level: InfoLevel::Error
@@ -189,7 +193,9 @@ impl<'parser> Parser<'parser> {
 					nextdoc = Some((doc, &tk.span));
 				}
 				TokenData::Symbol(name) => {
-					let mut equals_or_colon = self.peekable.next().ok_or(parser_err!(tk.span, "unexpected EOF"))?;
+					let mut equals_or_colon = self.peekable.next().ok_or(
+						parser_err!(tk.span, "unexpected EOF")
+					)?;
 					let mut generic_arguments = Vec::new();
 					let mut generic_span = Span::impossible();
 
@@ -206,18 +212,27 @@ impl<'parser> Parser<'parser> {
 											None => {},
 											Some(next) => {
 												if next.data != TokenData::Comma {
-													return Err(parser_err!(next.span, "generic arguments must be separated by a comma (`,`)"));
+													return Err(parser_err!(
+														next.span,
+														"generic arguments must be \
+														separated by a comma (`,`)"
+													));
 												}
 											}
 										}
 										generic_arguments.push(generic.to_string());
 									}
 									_ => {
-										return Err(parser_err!(token.span, "expected an identifier, got `{token}`"));
+										return Err(parser_err!(
+											token.span,
+											"expected an identifier, got `{token}`"
+										));
 									}
 								}
 							}
-							equals_or_colon = self.peekable.next().ok_or(parser_err!(tk.span, "unexpected EOF"))?;
+							equals_or_colon = self.peekable.next().ok_or(
+								parser_err!(tk.span, "unexpected EOF")
+							)?;
 						}
 						_ => {}
 					}
@@ -228,7 +243,9 @@ impl<'parser> Parser<'parser> {
 							let next = self.peekable.peek();
 							match next {
 								Some(Token { data: TokenData::Symbol(_), span: _ }) => {
-									let refr = Parser::parse_reference(&mut self.peekable, &equals_or_colon.span, layer)?;
+									let refr = Parser::parse_reference(
+										&mut self.peekable, &equals_or_colon.span, layer
+									)?;
 									value = DeclarationValue::AliasDeclaration {
 										generic_params: generic_arguments,
 										generic_span, layer,
@@ -254,18 +271,24 @@ impl<'parser> Parser<'parser> {
 								return Err(parser_err!(generic_span, "commands may not be generic"));
 							}
 
-							let next = self.peekable.peek().ok_or(parser_err!(equals_or_colon.span, "unexpected EOF"))?;
+							let next = self.peekable.peek().ok_or(parser_err!(
+								equals_or_colon.span,
+								"unexpected EOF"
+							))?;
 							let argument_span = next.span.clone();
 
 							let variable_because_rust_sucks = parser_err!(
 								// jk, rust is cool but just annoying as hell sometimes <3
 								next.span,
-								"expected an `->` for the command return type, got EOF; if the command doesn't return anything, use `Void`"
+								"expected an `->` for the command return type, \
+								got EOF; if the command doesn't return anything, use `Void`"
 							);
 
 							let argument = match &next.data {
 								TokenData::Symbol(_) => {
-									let refr = Parser::parse_reference(&mut self.peekable, &equals_or_colon.span, layer)?;
+									let refr = Parser::parse_reference(
+										&mut self.peekable, &equals_or_colon.span, layer
+									)?;
 									CommandArgument::Reference(refr)
 								}
 								TokenData::CurlyBraces(inside) => {
@@ -278,26 +301,40 @@ impl<'parser> Parser<'parser> {
 											false, false, layer
 										)?;
 										match decl {
-											(FlexibleDeclarationValue::StructDeclaration { inline: _, fields, .. }, _span) => {
+											(FlexibleDeclarationValue::StructDeclaration {
+												inline: _, fields, ..
+											}, _span) => {
 												CommandArgument::Struct { fields }
 											},
 											_ => {
-												return Err(parser_err!(decl.1, "only struct definitions (`{{ ... }}`) and references are allowed as command arguments"));
+												return Err(parser_err!(
+													decl.1,
+													"only struct definitions (`{{ ... }}`) \
+													and references are allowed as command arguments"
+												));
 											}
 										}
 									}
 								}
 								TokenData::Parentheses(inside) => {
-									let next = self.peekable.next().unwrap(); // Safe, beacuse `next` was peeked
+									let next = self.peekable.next().unwrap();
+									// Safe, beacuse `next` was peeked
 									if !inside.is_empty() {
 										return Err(
 											pb_err!(
 												next.span,
-												format!("expected either `{{ ... }}`, empty `()`, or an identifier, got {next}"),
-												ExtendedErrorExplanation::error_and(vec![
-													InfoExplanation {
+												format!(
+													"expected either `{{ ... }}`, empty `()`, \
+													or an identifier, got {next}"
+												),
+												ErrorInfo::error_and(vec![
+													Diagnostic {
 														span: next.span.clone(),
-														content: format!("if this is intended to be a value-enum declaration, put the name of the value-enum before the parentheses"),
+														content: format!(
+															"if this is intended to be a value-enum \
+															declaration, put the name of the value-enum \
+															before the parentheses"
+														),
 														level: InfoLevel::Tip
 													}
 												])
@@ -306,13 +343,21 @@ impl<'parser> Parser<'parser> {
 									CommandArgument::None
 								}
 								_ => {
-									return Err(parser_err!(next.span, "expected either `{{ ... }}`, empty `()`, or an identifier, got {next}"));
+									return Err(parser_err!(
+										next.span,
+										"expected either `{{ ... }}`, empty `()`, \
+										or an identifier, got {next}"
+									));
 								}
 							};
 
 							let arrow = self.peekable.next().ok_or(variable_because_rust_sucks)?;
 							if arrow.data != TokenData::Arrow {
-								return Err(parser_err!(arrow.span, "expected an `->` for the command return type, got `{arrow}`; if the command doesn't return anything, use `Void`"));
+								return Err(parser_err!(
+									arrow.span,
+									"expected an `->` for the command return type, got `{arrow}`; \
+									if the command doesn't return anything, use `Void`"
+								));
 							}
 
 							let ret = Parser::parse_reference(&mut self.peekable, &arrow.span, layer)?;
@@ -334,13 +379,17 @@ impl<'parser> Parser<'parser> {
 											return Err(PunybufError {
 												span: span.extend(&decl_span),
 												error: format!("all errors must be enums (or value-enums)"),
-												explanation: Some(ExtendedErrorExplanation::error_and(vec![
-													InfoExplanation {
+												info: ErrorInfo::error_and(vec![
+													Diagnostic {
 														span: decl_span,
-														content: format!("give a name to this struct and declare it inline as part of a value-enum, like `!(ErrorName {{ ... }})`"),
+														content: format!(
+															"give a name to this struct and declare \
+															it inline as part of a value-enum, \
+															like `!(ErrorName {{ ... }})`"
+														),
 														level: InfoLevel::Tip
 													}
-												]))
+												])
 											});
 										}
 										_ => {}
@@ -361,7 +410,8 @@ impl<'parser> Parser<'parser> {
 						_ => {
 							return Err(parser_err!(
 								equals_or_colon.span,
-								"unexpected token `{}`; in a declaration, an identifier should be followed by either `=` or `:`",
+								"unexpected token `{}`; in a declaration, \
+								an identifier should be followed by either `=` or `:`",
 								equals_or_colon
 							));
 						}
@@ -383,23 +433,38 @@ impl<'parser> Parser<'parser> {
 							match self.peekable.next() {
 								Some(Token { data: TokenData::Colon, span: _ }) => {},
 								Some(t) => {
-									return Err(parser_err!(t.span, "expected a colon (`:`) after the layer declaration, got `{t}`"));
+									return Err(parser_err!(
+										t.span,
+										"expected a colon (`:`) after the layer declaration, got `{t}`"
+									));
 								}
 								None => {
-									return Err(parser_err!(tk.span.extend(&span), "expected a colon (`:`) after the layer declaration"));
+									return Err(parser_err!(
+										tk.span.extend(&span),
+										"expected a colon (`:`) after the layer declaration"
+									));
 								}
 							}
 						}
 						Some(t) => {
-							return Err(parser_err!(t.span, "expected a number for the layer declaration, got `{t}`"));
+							return Err(parser_err!(
+								t.span,
+								"expected a number for the layer declaration, got `{t}`"
+							));
 						}
 						_ => {
-							return Err(parser_err!(tk.span, "expected a number for the layer declaration"));
+							return Err(parser_err!(
+								tk.span,
+								"expected a number for the layer declaration"
+							));
 						}
 					}
 				}
 				_ => {
-					return Err(parser_err!(tk.span, "expected `#[ ... ]`, a layer declaration or an identifier, got `{tk}`"));
+					return Err(parser_err!(
+						tk.span,
+						"expected `#[ ... ]`, a layer declaration or an identifier, got `{tk}`"
+					));
 				}
 			}
 		}
@@ -417,7 +482,10 @@ impl<'parser> Parser<'parser> {
 			match comma {
 				Some(Token { data: TokenData::Comma, span: _ }) => {}
 				Some(tk) => {
-					return Err(parser_err!(tk.span, "unexpected token `{tk}`; generic parameters must be separated by a comma (`,`)"));
+					return Err(parser_err!(
+						tk.span,
+						"unexpected token `{tk}`; generic parameters must be separated by a comma (`,`)"
+					));
 				}
 				_ => {}
 			}
@@ -432,7 +500,9 @@ impl<'parser> Parser<'parser> {
 		peekable: &mut Peekable<Iter<Token>>, before_decl: &Span,
 		is_inline: bool, start_at_one: bool, layer: u32
 	) -> Result<(FlexibleDeclarationValue, Span), PunybufError> {
-		let brackets = peekable.next().ok_or(parser_err!(before_decl, "this situation should be impossible, lol"))?;
+		let brackets = peekable.next().ok_or(parser_err!(
+			before_decl, "this situation should be impossible, lol"
+		))?;
 		match &brackets.data {
 			TokenData::CurlyBraces(inside) => Ok((
 				Parser::parse_struct_decl(
@@ -451,12 +521,17 @@ impl<'parser> Parser<'parser> {
 				brackets.span.clone()
 			)),
 			_ => {
-				Err(parser_err!(brackets.span, "expected one of `()`, `{{}}` or `[]`, got `{brackets}`"))
+				Err(parser_err!(
+					brackets.span,
+					"expected one of `()`, `{{}}` or `[]`, got `{brackets}`"
+				))
 			}
 		}
 	}
 
-	fn parse_struct_decl(tokens: &Vec<Token>, before_inline_decl: Option<&Span>, layer: u32) -> Result<FlexibleDeclarationValue, PunybufError> {
+	fn parse_struct_decl(tokens: &Vec<Token>, before_inline_decl: Option<&Span>, layer: u32)
+		-> Result<FlexibleDeclarationValue, PunybufError>
+	{
 		let mut fields = vec![];
 		let mut peekable = tokens.iter().peekable();
 
@@ -485,18 +560,16 @@ impl<'parser> Parser<'parser> {
 								return Err(PunybufError {
 									span: next.span.clone(),
 									error: "expected a `:` after the field name, got `?`".to_string(),
-									explanation: Some(
-										ExtendedErrorExplanation::error_and(vec![
-											InfoExplanation {
-												content: format!(
-													"if this is inteded to be a flag, \
-													put a dot (`.`) after this inline declaration's identifier"
-												),
-												span: before_inline_decl.clone(),
-												level: InfoLevel::Tip,
-											}
-										])
-									)
+									info: ErrorInfo::error_and(vec![
+										Diagnostic {
+											content: format!(
+												"if this is inteded to be a flag, \
+												put a dot (`.`) after this inline declaration's identifier"
+											),
+											span: before_inline_decl.clone(),
+											level: InfoLevel::Tip,
+										}
+									])
 								});
 							} else {
 								return Err(parser_err!(
@@ -515,8 +588,8 @@ impl<'parser> Parser<'parser> {
 									next.span,
 									"generic parameters cannot be defined on the type of \
 									anonymous flags".to_string(),
-									ExtendedErrorExplanation::error_and(vec![
-										InfoExplanation {
+									ErrorInfo::error_and(vec![
+										Diagnostic {
 											span: next.span.clone(),
 											level: InfoLevel::Tip,
 											content: format!(
@@ -681,12 +754,18 @@ impl<'parser> Parser<'parser> {
 					match peekable.next() {
 						None | Some(Token { data: TokenData::Comma, span: _ }) => {},
 						Some(Token { data: _, span }) => {
-							return Err(parser_err!(span, "expected a comma (`,`) to separate enum variants"));
+							return Err(parser_err!(
+								span,
+								"expected a comma (`,`) to separate enum variants"
+							));
 						}
 					}
 				}
 				_ => {
-					return Err(parser_err!(tk.span, "unexpected token `{tk}`, enum variants must be separated by `,`"));
+					return Err(parser_err!(
+						tk.span,
+						"unexpected token `{tk}`, enum variants must be separated by `,`"
+					));
 				}
 			}
 		}
@@ -762,7 +841,10 @@ impl<'parser> Parser<'parser> {
 				}
 				TokenData::Docs(doc) => {
 					if let Some(_) = next_doc {
-						return Err(parser_err!(token.span, "documentaion description defined twice"));
+						return Err(parser_err!(
+							token.span,
+							"documentaion description defined twice"
+						));
 					}
 					next_doc = Some(doc);
 				}
@@ -787,27 +869,25 @@ impl<'parser> Parser<'parser> {
 									return Err(PunybufError {
 										span: token.span.clone(),
 										error: "flags (optional fields) cannot contain flag fields".to_string(),
-										explanation: Some(
-											ExtendedErrorExplanation::error_and(vec![
-												InfoExplanation {
-													content: format!(
-														"try removing this period \
-														to make `{flag_name}` into a regular field"
-													),
-													span: dot_span.clone(),
-													level: InfoLevel::Tip,
-												},
-												InfoExplanation {
-													content: format!(
-														"...or try defining `{flag_name}`'s \
-														type so that it contains a flag field"
-													),
-													// if this is reached, refr is always `Some(...)`
-													span: refr.unwrap().get_name_span().clone(),
-													level: InfoLevel::Tip,
-												},
-											])
-										)
+										info: ErrorInfo::error_and(vec![
+											Diagnostic {
+												content: format!(
+													"try removing this period \
+													to make `{flag_name}` into a regular field"
+												),
+												span: dot_span.clone(),
+												level: InfoLevel::Tip,
+											},
+											Diagnostic {
+												content: format!(
+													"...or try defining `{flag_name}`'s \
+													type so that it contains a flag field"
+												),
+												// if this is reached, refr is always `Some(...)`
+												span: refr.unwrap().get_name_span().clone(),
+												level: InfoLevel::Tip,
+											},
+										])
 									});
 								}
 								_ => {}
@@ -849,7 +929,10 @@ impl<'parser> Parser<'parser> {
 	fn parse_reference(peekable: &mut Peekable<Iter<Token>>, before_sym: &Span, layer: u32)
 		-> Result<ValueReference, PunybufError>
 	{
-		let thing = peekable.next().ok_or(parser_err!(before_sym, "expected an identifier, got nothing"))?;
+		let thing = peekable.next().ok_or(parser_err!(
+			before_sym,
+			"expected an identifier, got nothing"
+		))?;
 		let name = match &thing.data {
 			TokenData::Symbol(x) => x,
 			_ => {
@@ -867,16 +950,18 @@ impl<'parser> Parser<'parser> {
 							Some(Token { data: TokenData::CurlyBraces(_), span: braces_span }) => {
 								return Err(PunybufError {
 									span: braces_span.clone(),
-									error: format!("unexpected `{{ ... }}`; you cannot define generic parameters for inline declarations, such as `{name}`"),
-									explanation: Some(
-										ExtendedErrorExplanation::error_and(vec![
-											InfoExplanation {
-												content: format!("generics for `{name}` defined here"),
-												span: span.clone(),
-												level: InfoLevel::Info,
-											}
-										])
-									)
+									error: format!(
+										"unexpected `{{ ... }}`; \
+										you cannot define generic parameters \
+										for inline declarations, such as `{name}`"
+									),
+									info: ErrorInfo::error_and(vec![
+										Diagnostic {
+											content: format!("generics for `{name}` defined here"),
+											span: span.clone(),
+											level: InfoLevel::Info,
+										}
+									])
 								});
 							}
 							_ => {}
@@ -887,7 +972,9 @@ impl<'parser> Parser<'parser> {
 							generics, generic_span: span.clone(),
 						});
 					}
-					TokenData::CurlyBraces(_) | TokenData::Parentheses(_) | TokenData::SquareBrackets(_) => {
+					TokenData::CurlyBraces(_) |
+					TokenData::Parentheses(_) |
+					TokenData::SquareBrackets(_) => {
 						let (decl, decl_span) = Parser::parse_decl(
 							peekable,
 							&thing.span,

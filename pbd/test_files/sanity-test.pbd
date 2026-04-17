@@ -1,0 +1,31 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@flags(64)
+Flags = Flags
+
+# comment
+#[ documentation ]
+SomeStruct = {
+	field_1: Builtin
+	field_2: Builtin
+	flag_field: Flags.{
+		flag?
+		flag_with_value?: Builtin
+	}
+}
+
+SomeEnum = [
+	Variant1, Variant2,
+	AssociatedValue: SomeStruct
+]
+
+TypeEnum = (
+	SomeStruct, SomeEnum, Builtin
+)
+
+SomeAlias = SomeStruct
+
+@resolve
+ResolvedAlias = SomeStruct

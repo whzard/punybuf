@@ -1,0 +1,26 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@void
+Void = ()
+
+Dependency = [
+	Yes, No
+]
+
+SomeStruct = {
+	field: Builtin
+	dep: Dependency
+}
+
+someCommand: {
+	field: Builtin
+	struct: SomeStruct
+} -> Void
+
+layer 1:
+
+someCommand = {
+	uh_oh_i_am_a_struct_now: SomeStruct
+}

@@ -1,0 +1,37 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@flags(64)
+Flags = Flags
+
+@sealed
+SealedStruct = {
+	flags: Flags.{
+		value_flag?: Builtin
+		bool_flag?
+	}
+}
+
+ExtensibleStruct = {
+	field: Builtin
+	field_2: Flags
+	flags: Flags.{
+		native_flag?
+		native_flag_value?: Builtin
+		@extension
+		extension_flag?
+		@extension
+		extension_flag_value?: Builtin
+	}
+}
+
+InextensibleEnum = [
+	Yes, No,
+]
+
+ExtensibleEnum = [
+	@default Maybe,
+	Yes, No,
+	@extension IDK: Builtin
+]

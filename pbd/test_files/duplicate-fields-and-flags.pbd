@@ -1,0 +1,14 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@flags(64)
+Flags = Flags
+
+MyStruct = {
+	field_one: Builtin
+	Flags.{
+		flag_one?: Builtin
+		field_one?: Flags
+	}
+}

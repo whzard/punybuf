@@ -1,0 +1,16 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@flags(64)
+Flags = Flags
+
+@sealed
+SealedStruct = {
+	flags: Flags.{
+		value_flag?: Builtin
+		bool_flag?
+		@extension
+		illegal_extension?: Builtin
+	}
+}

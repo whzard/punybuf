@@ -2,7 +2,7 @@ use crc::{Crc, CRC_32_CKSUM};
 use std::collections::HashMap;
 
 use crate::{
-	errors::{parser_err, ExtendedErrorExplanation, PunybufError},
+	errors::{parser_err, ErrorInfo, PunybufError},
 	lexer::Span,
 	parser::{
 		CommandArgument, Declaration, DeclarationValue, EnumVariant, Field,
@@ -10,64 +10,64 @@ use crate::{
 	},
 };
 
-pub const PB_CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_CKSUM);
+pub(crate) const PB_CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_CKSUM);
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub struct PBTypeRef {
-	pub reference: String,
-	pub reference_span: Span,
-	pub generics: Vec<PBTypeRef>,
-	pub generic_span: Span,
+pub(crate) struct PBTypeRef {
+	pub(crate) reference: String,
+	pub(crate) reference_span: Span,
+	pub(crate) generics: Vec<PBTypeRef>,
+	pub(crate) generic_span: Span,
 	/// the actual layer of the type this is referring to
 	/// 
 	/// (this is only valid post-resolution)
-	pub resolved_layer: Option<u32>,
+	pub(crate) resolved_layer: Option<u32>,
 	/// is this the highest layer?
 	/// 
 	/// (this is only valid post-resolution)
-	pub is_highest_layer: bool,
+	pub(crate) is_highest_layer: bool,
 	/// is it global or generic?
 	/// 
 	/// (this is only valid post-resolution)
-	pub is_global: bool,
+	pub(crate) is_global: bool,
 }
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub struct PBFieldFlag {
-	pub name: String,
-	pub name_span: Span,
-	pub value: Option<PBTypeRef>,
-	pub attrs: HashMap<String, Option<String>>,
-	pub doc: String,
+pub(crate) struct PBFieldFlag {
+	pub(crate) name: String,
+	pub(crate) name_span: Span,
+	pub(crate) value: Option<PBTypeRef>,
+	pub(crate) attrs: HashMap<String, Option<String>>,
+	pub(crate) doc: String,
 }
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub struct PBField {
-	pub name: String,
-	pub name_span: Span,
-	pub value: PBTypeRef,
-	pub flags: Option<Vec<PBFieldFlag>>,
-	pub attrs: HashMap<String, Option<String>>,
-	pub doc: String,
+pub(crate) struct PBField {
+	pub(crate) name: String,
+	pub(crate) name_span: Span,
+	pub(crate) value: PBTypeRef,
+	pub(crate) flags: Option<Vec<PBFieldFlag>>,
+	pub(crate) attrs: HashMap<String, Option<String>>,
+	pub(crate) doc: String,
 }
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub struct PBEnumVariant {
-	pub name: String,
-	pub name_span: Span,
-	pub discriminant: u8,
-	pub value: Option<PBTypeRef>,
-	pub attrs: HashMap<String, Option<String>>,
-	pub doc: String,
+pub(crate) struct PBEnumVariant {
+	pub(crate) name: String,
+	pub(crate) name_span: Span,
+	pub(crate) discriminant: u8,
+	pub(crate) value: Option<PBTypeRef>,
+	pub(crate) attrs: HashMap<String, Option<String>>,
+	pub(crate) doc: String,
 }
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub enum PBTypeDef {
+pub(crate) enum PBTypeDef {
 	Struct {
 		name: String,
 		name_span: Span,
@@ -106,49 +106,49 @@ pub enum PBTypeDef {
 }
 
 impl PBTypeDef {
-	pub fn get_name(&self) -> (&str, &Span) {
+	pub(crate) fn get_name(&self) -> (&str, &Span) {
 		match self {
 			Self::Alias { name, name_span, .. } |
 			Self::Enum { name, name_span, .. } |
 			Self::Struct { name, name_span, .. } => (name, name_span)
 		}
 	}
-	pub fn get_generics(&self) -> (&Vec<String>, &Span) {
+	pub(crate) fn get_generics(&self) -> (&Vec<String>, &Span) {
 		match self {
 			Self::Alias { generic_params, generic_span, .. } |
 			Self::Enum { generic_params, generic_span, .. } |
 			Self::Struct { generic_params, generic_span, .. } => (generic_params, generic_span)
 		}
 	}
-	pub fn get_inline_owner(&self) -> &Option<(String, Span)> {
+	pub(crate) fn get_inline_owner(&self) -> &Option<(String, Span)> {
 		match self {
 			Self::Alias { .. } => &None,
 			Self::Enum { inline_owner, .. } |
 			Self::Struct { inline_owner, .. } => inline_owner
 		}
 	}
-	pub fn get_attrs(&self) -> &HashMap<String, Option<String>> {
+	pub(crate) fn get_attrs(&self) -> &HashMap<String, Option<String>> {
 		match self {
 			Self::Alias { attrs, .. } |
 			Self::Enum { attrs, .. } |
 			Self::Struct { attrs, .. } => attrs
 		}
 	}
-	pub fn get_doc(&self) -> &str {
+	pub(crate) fn get_doc(&self) -> &str {
 		match self {
 			Self::Alias { doc, .. } |
 			Self::Enum { doc, .. } |
 			Self::Struct { doc, .. } => doc
 		}
 	}
-	pub fn get_layer(&self) -> &u32 {
+	pub(crate) fn get_layer(&self) -> &u32 {
 		match self {
 			Self::Alias { layer, .. } |
 			Self::Enum { layer, .. } |
 			Self::Struct { layer, .. } => layer
 		}
 	}
-	pub fn is_highest_layer(&self) -> bool {
+	pub(crate) fn is_highest_layer(&self) -> bool {
 		match self {
 			Self::Alias { is_highest_layer, .. } |
 			Self::Enum { is_highest_layer, .. } |
@@ -159,7 +159,7 @@ impl PBTypeDef {
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub enum PBCommandArg {
+pub(crate) enum PBCommandArg {
 	None,
 	Ref(PBTypeRef),
 	Struct {
@@ -169,32 +169,32 @@ pub enum PBCommandArg {
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub struct PBCommandDef {
-	pub name: String,
-	pub name_span: Span,
-	pub argument: PBCommandArg,
-	pub argument_span: Span,
-	pub attrs: HashMap<String, Option<String>>,
-	pub doc: String,
-	pub layer: u32,
-	pub command_id: u32,
-	pub ret: PBTypeRef,
-	pub err: Vec<PBEnumVariant>,
-	pub err_span: Span,
-	pub is_highest_layer: bool,
+pub(crate) struct PBCommandDef {
+	pub(crate) name: String,
+	pub(crate) name_span: Span,
+	pub(crate) argument: PBCommandArg,
+	pub(crate) argument_span: Span,
+	pub(crate) attrs: HashMap<String, Option<String>>,
+	pub(crate) doc: String,
+	pub(crate) layer: u32,
+	pub(crate) command_id: u32,
+	pub(crate) ret: PBTypeRef,
+	pub(crate) err: Vec<PBEnumVariant>,
+	pub(crate) err_span: Span,
+	pub(crate) is_highest_layer: bool,
 }
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
 pub struct PunybufDefinition {
-	pub types: Vec<PBTypeDef>,
-	pub commands: Vec<PBCommandDef>,
-	pub includes_common: bool,
+	pub(crate) types: Vec<PBTypeDef>,
+	pub(crate) commands: Vec<PBCommandDef>,
+	pub(crate) includes_common: bool,
 	context_inline_owner: Option<(String, Span)>,
 }
 
 impl PunybufDefinition {
-	pub fn new(includes_common: bool) -> Self {
+	pub(crate) fn new(includes_common: bool) -> Self {
 		Self {
 			types: vec![],
 			commands: vec![],
@@ -205,7 +205,7 @@ impl PunybufDefinition {
 }
 
 impl PunybufDefinition {
-	pub fn flatten_doc(&self, doc: String) -> String {
+	pub(crate) fn flatten_doc(&self, doc: String) -> String {
 		let mut result = String::with_capacity(doc.len());
 		let mut is_empty_first_line = false;
 		let mut is_skipping_empty_lines = true;
@@ -252,7 +252,7 @@ impl PunybufDefinition {
 		}
 		result
 	}
-	pub fn flatten_reference(&mut self, refr: ValueReference) -> PBTypeRef {
+	pub(crate) fn flatten_reference(&mut self, refr: ValueReference) -> PBTypeRef {
 		match refr {
 			ValueReference::Reference { name, name_span, generics, generic_span, .. } => {
 				let generics = generics.into_iter().map(|r| self.flatten_reference(r)).collect();
@@ -286,7 +286,7 @@ impl PunybufDefinition {
 			}
 		}
 	}
-	pub fn flatten_field(&mut self, field: Field) -> PBField {
+	pub(crate) fn flatten_field(&mut self, field: Field) -> PBField {
 		let flags = field.flags.map(|flags| flags.into_iter().map(|f| {
 			PBFieldFlag {
 				name: f.name, name_span: f.name_span,
@@ -301,7 +301,7 @@ impl PunybufDefinition {
 			flags, attrs: field.attrs, doc: self.flatten_doc(field.doc)
 		}
 	}
-	pub fn flatten_enum_variant(&mut self, ev: EnumVariant) -> PBEnumVariant {
+	pub(crate) fn flatten_enum_variant(&mut self, ev: EnumVariant) -> PBEnumVariant {
 		PBEnumVariant {
 			name: ev.name, name_span: ev.name_span,
 			discriminant: ev.discriminant,
@@ -309,7 +309,7 @@ impl PunybufDefinition {
 			attrs: ev.attrs, doc: self.flatten_doc(ev.doc)
 		}
 	}
-	pub fn flatten_value_enum_variant(&mut self, vev: ValueEnumVariant) -> PBEnumVariant {
+	pub(crate) fn flatten_value_enum_variant(&mut self, vev: ValueEnumVariant) -> PBEnumVariant {
 		let name = vev.value.get_name().to_string();
 		let name_span = vev.value.get_name_span().clone();
 		PBEnumVariant {
@@ -319,7 +319,7 @@ impl PunybufDefinition {
 			attrs: vev.attrs, doc: self.flatten_doc(vev.doc)
 		}
 	}
-	pub fn flatten_flexible_decl(
+	pub(crate) fn flatten_flexible_decl(
 		&mut self,
 		name: String, name_span: Span,
 		doc: String, attrs: HashMap<String, Option<String>>,
@@ -381,7 +381,7 @@ impl PunybufDefinition {
 	}
 }
 
-pub fn flatten(decls: Vec<Declaration>, includes_common: bool) -> Result<PunybufDefinition, PunybufError> {
+pub(crate) fn flatten(decls: Vec<Declaration>, includes_common: bool) -> Result<PunybufDefinition, PunybufError> {
 	let mut def = PunybufDefinition::new(includes_common);
 
 	for decl in decls {

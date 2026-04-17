@@ -59,13 +59,13 @@ Options:
 - `/rust_punybuf_common` - Rust crate for `common`  
 
 ## TODO
-- Add tests
 - Add native support for more languages
 - Catch self-referential types during validation
 - Implement binary compatibility checks
 - Document capabilities
 - Finish documentation
-- Decide what to do with [extension flags](./docs/BinaryFormat.md#extending-structs) (bottom part of this section).
 - Support `doc`s inside files
-- Rust codegen: restructure to (optionally?) use references instead of owned values
-- Rust codegen: use `u64` instead of `UInt`
+- More tests!
+- Rust codegen: restructure to use Cows instead of owned values & a deserializer from `&[u8]`
+- Rust codegen: use `u64` instead of `UInt`?
+- Rust: finalize the API to be used inside Cargo build scripts.

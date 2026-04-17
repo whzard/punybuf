@@ -89,7 +89,14 @@ use crate::flattener::{
 
 fn convert_attrs(attrs: &HashMap<String, Option<String>>) -> json::JsonValue {
 	let mut obj = json::JsonValue::new_object();
-	for (k, v) in attrs {
+	// We sort this just so that the test suite can deterministically
+	// compare json values as strings, without parsing them.
+	// Implementations should not rely on this behavior!
+	//
+	// TODO: fix this so that the actual pbd command doesn't waste resources.
+	let mut pairs = attrs.iter().collect::<Vec<_>>();
+	pairs.sort();
+	for (k, v) in pairs {
 		obj.insert(&k, match v { None => json::Null, Some(s) => s.as_str().into() }).unwrap();
 	};
 

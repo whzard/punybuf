@@ -7,3 +7,11 @@ edition = "2021"
 clap = { version = "4.5.37", features = ["cargo"]}
 crc = "3.2.1"
 json = "0.12.4"
+
+[lib]
+name = "punybuf"
+path = "src/lib.rs"
+
+[[test]]
+name = "harness"
+harness = false

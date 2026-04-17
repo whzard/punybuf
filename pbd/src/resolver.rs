@@ -17,19 +17,19 @@ use crate::flattener::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DependentKind {
+enum DependentKind {
 	Type, Command
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Dependent {
-	pub name: String,
-	pub layer: u32,
-	pub kind: DependentKind
+struct Dependent {
+	name: String,
+	layer: u32,
+	kind: DependentKind
 }
 
 pub struct LayerResolver {
-	pub dependencies: HashMap<String, HashSet<Dependent>>,
+	dependencies: HashMap<String, HashSet<Dependent>>,
 	pub should_resolve_aliases: bool,
 }
 
@@ -235,7 +235,7 @@ impl LayerResolver {
 	// `LayerResolver` in general has quite a weird singature and so possibly
 	// TODO: refactor this so that `PunybufDefinition` is present on the struct itself
 	// (lifetimes get messy sometimes)
-	pub fn resolve(mut self, definition: &mut PunybufDefinition) {
+	pub(crate) fn resolve(mut self, definition: &mut PunybufDefinition) {
 		for index in 0..definition.types.len() {
 			let tp = &mut definition.types[index];
 			match tp {
@@ -552,6 +552,7 @@ impl LayerResolver {
 	}
 
 	// here be dragons:
+	// (the following code is unused)
 
 	/// the `refr` argument is actually being **mutated**, even though it's said to be a `*const _`.
 	/// miri says that this is undefined behavior and i believe it, but don't care enough to fight with the

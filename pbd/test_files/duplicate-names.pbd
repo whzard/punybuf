@@ -1,0 +1,11 @@
+@builtin
+Builtin = Builtin
+
+MyType = {
+	field_one: Builtin
+	field_two: Builtin
+}
+
+MyType = [
+	No, Enum
+]
