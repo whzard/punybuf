@@ -1,0 +1,12 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@flags(64)
+Flags = Flags
+
+SomeStruct = {
+	flags: Flags.{
+		no_question_mark: Builtin
+	}
+}

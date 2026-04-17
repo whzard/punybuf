@@ -1,0 +1,49 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@void
+Void = ()
+
+Dependency = [
+	Yes, No
+]
+
+SomeStruct = {
+	field: Builtin
+	dep: Dependency
+}
+
+someCommand: {
+	field: Builtin
+	struct: SomeStruct
+} -> Void
+
+layer 1:
+
+@sealed
+SomeStruct = {
+	no_dep: Builtin
+}
+
+layer 2:
+
+# SomeStruct no longer depends on `Dependency`
+# there should not be a second SomeStruct generated
+# at this point
+Dependency = [
+	Yes, No, Maybe
+]
+
+layer 3:
+
+someCommand: {
+	dep: Dependency
+} -> Void
+
+layer 4:
+
+# someCommand depends on it now, so a new someCommand should be generated
+Dependency = [
+	Yes, No, Probably, ProbablyNot
+]

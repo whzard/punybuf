@@ -1,0 +1,21 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@flags(64)
+Flags = Flags
+
+ExtensibleStruct = {
+	field: Builtin
+	field_2: Flags
+	flags: Flags.{
+		native_flag?
+		native_flag_value?: Builtin
+		@extension
+		extension_flag?
+		illegal_native_flag?
+		illegal_native_flag_value?: Builtin
+		@extension
+		extension_flag_value?: Builtin
+	}
+}

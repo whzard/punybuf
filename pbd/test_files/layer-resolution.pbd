@@ -1,0 +1,33 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@void
+Void = ()
+
+Dependency = [
+	Yes, No
+]
+
+SomeStruct = {
+	field: Builtin
+	dep: Dependency
+}
+
+someCommand: {
+	field: Builtin
+	struct: SomeStruct
+} -> Void
+
+layer 1:
+
+@sealed
+SomeStruct = {
+	dep: Dependency
+}
+
+layer 2:
+
+Dependency = [
+	Yes, No, Maybe
+]

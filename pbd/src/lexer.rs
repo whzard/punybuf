@@ -4,10 +4,10 @@ use std::{
 	rc::Rc,
 };
 
-use crate::errors::{parser_err, ExtendedErrorExplanation, PunybufError};
+use crate::{errors::{ErrorInfo, PunybufError, parser_err}, pb_err};
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum TokenData {
+pub(crate) enum TokenData {
 	Symbol(String),
 	Numeric(u32),
 	Equals,
@@ -50,10 +50,10 @@ impl Loc {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Span {
-	pub loc_start: Loc,
-	pub loc_end: Loc,
-	pub file_name: String,
-	pub file_contents: Rc<String>,
+	pub(crate) loc_start: Loc,
+	pub(crate) loc_end: Loc,
+	pub(crate) file_name: String,
+	pub(crate) file_contents: Rc<String>,
 }
 
 impl Debug for Span {
@@ -80,12 +80,21 @@ impl Span {
 			file_contents: self.file_contents.clone()
 		}
 	}
+	pub fn file_name(&self) -> &str {
+		&self.file_name
+	}
+	pub fn start(&self) -> &Loc {
+		&self.loc_start
+	}
+	pub fn end(&self) -> &Loc {
+		&self.loc_end
+	}
 }
 
 #[derive(PartialEq, Eq)]
 pub struct Token {
-	pub data: TokenData,
-	pub span: Span
+	pub(crate) data: TokenData,
+	pub(crate) span: Span
 }
 
 impl Token {
@@ -184,12 +193,19 @@ pub trait IncludeHandler {
 	fn handle_include(&mut self, include_path: String, include_span: Span) -> Result<Vec<Token>, PunybufError>;
 }
 
+pub struct IncludeDisallowed;
+impl IncludeHandler for IncludeDisallowed {
+	fn handle_include(&mut self, _: String, include_span: Span) -> Result<Vec<Token>, PunybufError> {
+		Err(pb_err!(include_span, "include is not allowed here".to_string(), ErrorInfo::empty()))
+	}
+}
+
 pub struct Lexer<'a, I> {
-	pub contents: Rc<String>,
-	pub file_name: &'a str,
-	pub current_loc: Loc,
-	pub include_handler: &'a mut I,
-	pub includes_common: bool,
+	pub(crate) contents: Rc<String>,
+	pub(crate) file_name: &'a str,
+	pub(crate) current_loc: Loc,
+	pub(crate) include_handler: &'a mut I,
+	pub(crate) includes_common: bool,
 }
 
 impl<'a, I: IncludeHandler> Lexer<'a, I> {
@@ -240,10 +256,10 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 
 		return Ok(tokens);
 	}
-	pub fn token(&self, data: TokenData) -> Token {
+	pub(crate) fn token(&self, data: TokenData) -> Token {
 		Token::new(data, self.current_loc.clone(), self.file_name.to_string(), self.contents.clone())
 	}
-	pub fn token_end_loc(&self, data: TokenData, loc_end: Loc) -> Token {
+	pub(crate) fn token_end_loc(&self, data: TokenData, loc_end: Loc) -> Token {
 		Token {
 			data, span: Span {
 				loc_start: self.current_loc.clone(),
@@ -261,7 +277,7 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 				file_contents: self.contents.clone()
 			},
 			error,
-			explanation: Some(ExtendedErrorExplanation::empty())
+			info: ErrorInfo::empty()
 		}
 	}
 	fn lex_internal<Iter>(

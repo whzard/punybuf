@@ -1,8 +1,8 @@
-use std::{collections::HashMap, u32};
+use std::{collections::HashMap, fmt::Display, u32};
 
 use crate::{
 	errors::{
-		parser_err, pb_err, ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError,
+		parser_err, pb_err, ErrorInfo, Diagnostic, InfoLevel, PunybufError,
 	},
 	flattener::{
 		PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBFieldFlag, PBTypeDef, PBTypeRef,
@@ -82,6 +82,21 @@ impl<'a> Owner<'a> {
 	}
 }
 
+#[derive(PartialEq, Eq)]
+enum SeenNameType {
+	Field, Flag
+}
+
+impl Display for SeenNameType {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(match self {
+			Self::Field => "field",
+			Self::Flag => "flag"
+		})?;
+		Ok(())
+	}
+}
+
 pub struct PunybufValidator<'pbd> {
 	pub definition: &'pbd PunybufDefinition,
 	context_generic_params: Vec<(&'pbd str, &'pbd Span)>
@@ -99,8 +114,8 @@ impl<'d> PunybufValidator<'d> {
 					owner.get_name().1,
 					format!("reached limit for `@flags` evaluation for a field in this struct - \
 					either you have ~200 aliases, which is cursed, ..."),
-					ExtendedErrorExplanation::error_and(vec![
-						InfoExplanation {
+					ErrorInfo::error_and(vec![
+						Diagnostic {
 							span: decl.get_name().1.clone(),
 							content: format!("...or `{}` is part of a cyclic alias", decl.get_name().0),
 							level: InfoLevel::Error
@@ -120,8 +135,8 @@ impl<'d> PunybufValidator<'d> {
 						pb_err!(
 							decl.get_name().1,
 							format!("the `@flags` attribute on this type doesn't put a limit on how many flags are possible"),
-							ExtendedErrorExplanation::error_and(vec![
-								InfoExplanation {
+							ErrorInfo::error_and(vec![
+								Diagnostic {
 									span: owner.get_name().1.clone(),
 									content: format!("`{}` is mentioned here", decl.get_name().0),
 									level: InfoLevel::Tip
@@ -139,8 +154,8 @@ impl<'d> PunybufValidator<'d> {
 							pb_err!(
 								decl.get_name().1,
 								format!("the `@flags` attribute on this type must put a limit on how many flags are possible"),
-								ExtendedErrorExplanation::error_and(vec![
-									InfoExplanation {
+								ErrorInfo::error_and(vec![
+									Diagnostic {
 										span: owner.get_name().1.clone(),
 										content: format!("`{}` is mentioned here", decl.get_name().0),
 										level: InfoLevel::Tip
@@ -202,8 +217,8 @@ impl<'d> PunybufValidator<'d> {
 				return Err(pb_err!(
 					refr.generic_span,
 					format!("cannot provide generic arguments to a generic parameter"),
-					ExtendedErrorExplanation::error_and(vec![
-						InfoExplanation {
+					ErrorInfo::error_and(vec![
+						Diagnostic {
 							span: generic_ref.1.clone(),
 							content: format!("generic parameters defined here"),
 							level: InfoLevel::Info
@@ -230,8 +245,8 @@ impl<'d> PunybufValidator<'d> {
 								"inline declaration of `{}` conflicts with a generic parameter",
 								refr.reference
 							),
-							ExtendedErrorExplanation::error_and(vec![
-								InfoExplanation {
+							ErrorInfo::error_and(vec![
+								Diagnostic {
 									span: generic_ref.1.clone(),
 									content: format!(
 										"generic parameters, including `{}`, are defined here...",
@@ -239,7 +254,7 @@ impl<'d> PunybufValidator<'d> {
 									),
 									level: InfoLevel::Info
 								},
-								InfoExplanation {
+								Diagnostic {
 									span: decl.get_name().1.clone(),
 									content: format!("...but `{}` is also declared inline here", refr.reference),
 									level: InfoLevel::Info
@@ -264,22 +279,22 @@ impl<'d> PunybufValidator<'d> {
 							Some((valid_owner, valid_owner_span)) => {
 								if valid_owner != owner.get_name().0 {
 									let mut explanation = vec![
-										InfoExplanation {
+										Diagnostic {
 											span: valid_owner_span.clone(),
 											content: format!("inside `{valid_owner}`..."),
 											level: InfoLevel::Info
 										},
-										InfoExplanation {
+										Diagnostic {
 											span: name_span.clone(),
 											content: format!("...`{}` is declared inline...", refr.reference),
 											level: InfoLevel::Info
 										},
-										InfoExplanation {
+										Diagnostic {
 											span: owner.get_name().1.clone(),
 											content: format!("...but inside `{}`...", owner.get_name().0),
 											level: InfoLevel::Info
 										},
-										InfoExplanation {
+										Diagnostic {
 											span: refr.reference_span.clone(),
 											content: format!(
 												"...`{}` is referenced, outside of `{valid_owner}`",
@@ -294,12 +309,12 @@ impl<'d> PunybufValidator<'d> {
 										Some(owner_of_owner) => if owner_of_owner.0 == refr.reference ||
 											owner_of_owner.0 == *valid_owner
 										{
-											explanation.push(InfoExplanation {
+											explanation.push(Diagnostic {
 												span: owner_of_owner.1.clone(),
 												content: format!("info: even though inside `{}`...", owner_of_owner.0),
 												level: InfoLevel::Info
 											});
-											explanation.push(InfoExplanation {
+											explanation.push(Diagnostic {
 												span: owner.get_name().1.clone(),
 												content: format!(
 													"...`{}` is declared inline...",
@@ -307,7 +322,7 @@ impl<'d> PunybufValidator<'d> {
 												),
 												level: InfoLevel::Info
 											});
-											explanation.push(InfoExplanation {
+											explanation.push(Diagnostic {
 												span: refr.reference_span.clone(),
 												content: format!(
 													"...you may reference `{}` only directly from inside `{valid_owner}`, \
@@ -316,7 +331,7 @@ impl<'d> PunybufValidator<'d> {
 												),
 												level: InfoLevel::Error
 											});
-											explanation.push(InfoExplanation {
+											explanation.push(Diagnostic {
 												span: refr.reference_span.clone(),
 												content: format!(
 													"also, `{}` is a cyclic type, so be careful!",
@@ -333,7 +348,7 @@ impl<'d> PunybufValidator<'d> {
 											"type `{}` is inline and cannot be referenced outside `{valid_owner}`",
 											refr.reference
 										),
-										ExtendedErrorExplanation::custom(explanation)
+										ErrorInfo::custom(explanation)
 									));
 								}
 							}
@@ -354,20 +369,20 @@ impl<'d> PunybufValidator<'d> {
 							refr.reference, decl_generic_params.len(), refr.generics.len()
 						),
 
-						ExtendedErrorExplanation::custom(vec![
-							InfoExplanation {
+						ErrorInfo::custom(vec![
+							Diagnostic {
 								span: decl_generic_span.clone(),
 								content: format!("generic parameters for `{}` are defined here", refr.reference),
 								level: InfoLevel::Info
 							},
 							if refr.generic_span == Span::impossible() {
-								InfoExplanation {
+								Diagnostic {
 									span: refr.reference_span.clone(),
 									content: format!("no generic arguments (`< ... >`) provided at all"),
 									level: InfoLevel::Error
 								}
 							} else {
-								InfoExplanation {
+								Diagnostic {
 									span: refr.generic_span.clone(),
 									content: format!("missing generic arguments: `{}`", not_provided.join("`, `")),
 									level: InfoLevel::Error
@@ -384,15 +399,15 @@ impl<'d> PunybufValidator<'d> {
 							"type `{}` takes only {} generic arguments, but {} were provided",
 							refr.reference, decl_generic_params.len(), refr.generics.len()
 						),
-						ExtendedErrorExplanation::error_and(vec![
+						ErrorInfo::error_and(vec![
 							if *decl_generic_span == Span::impossible() {
-								InfoExplanation {
+								Diagnostic {
 									span: decl.get_name().1.clone(),
 									content: format!("`{}` takes no generics (`< ... >`)", refr.reference),
 									level: InfoLevel::Info
 								}
 							} else {
-								InfoExplanation {
+								Diagnostic {
 									span: decl_generic_span.clone(),
 									content: format!("generic parameters for `{}` are defined here", refr.reference),
 									level: InfoLevel::Info
@@ -413,8 +428,8 @@ impl<'d> PunybufValidator<'d> {
 					return Err(pb_err!(
 						refr.reference_span,
 						format!("type `{}` cannot be referenced from a lower layer", refr.reference),
-						ExtendedErrorExplanation::custom(vec![
-							InfoExplanation {
+						ErrorInfo::custom(vec![
+							Diagnostic {
 								span: owner.get_name().1.clone(),
 								content: format!(
 									"`{}` is declared at layer {}...",
@@ -422,12 +437,12 @@ impl<'d> PunybufValidator<'d> {
 								),
 								level: InfoLevel::Info
 							},
-							InfoExplanation {
+							Diagnostic {
 								span: refr.reference_span.clone(),
 								content: format!("...and references `{}`...", refr.reference),
 								level: InfoLevel::Error
 							},
-							InfoExplanation {
+							Diagnostic {
 								span: decl.get_name().1.clone(),
 								content: format!(
 									"...but `{}` is first declared at layer {} and doesn't exist at layer {}",
@@ -462,55 +477,74 @@ impl<'d> PunybufValidator<'d> {
 			if declared_params.contains(&ga.as_str()) {
 				return Err(pb_err!(
 					span,
-					format!("generic parameter `{ga}` defined twice")
+					format!("generic parameter `{ga}` defined multiple times")
 				));
 			}
 			declared_params.push(ga);
 		}
 		Ok(())
 	}
-	pub fn validate_flags(&self, owner: &Owner, flags: &Vec<PBFieldFlag>) -> Result<(), PunybufError> {
+	fn validate_flags<'n, 'f: 'n>(
+		&self, owner: &Owner, flags: &'f Vec<PBFieldFlag>,
+		seen_names: &mut Vec<(&'n str, &'n Span, SeenNameType)>
+	)
+		-> Result<(), PunybufError>
+	{
 		let is_sealed = owner.get_attrs().contains_key("@sealed");
 		let mut extension_begin = None::<(&str, &Span)>;
 
-		let mut seen_names: Vec<(&str, &Span)> = vec![];
 		for flag in flags {
 			if let Some(dupe) = seen_names.iter().find(|n| *n.0 == flag.name) {
+				let mut expl = ErrorInfo::custom(vec![
+					Diagnostic {
+						span: dupe.1.clone(),
+						content: format!(
+							"{} `{}` defined here first",
+							dupe.2,
+							dupe.0
+						),
+						level: InfoLevel::Info
+					},
+					Diagnostic {
+						span: flag.name_span.clone(),
+						content: format!("`{}` defined here again", dupe.0),
+						level: InfoLevel::Error
+					},
+				]);
+				if dupe.2 != SeenNameType::Flag {
+					expl.after_error.push(Diagnostic {
+						span: owner.get_name().1.clone(),
+						content: format!(
+							"flags and struct fields share the namespace `{}`",
+							owner.get_name().0
+						),
+						level: InfoLevel::Tip
+					});
+				}
 				return Err(pb_err!(
 					flag.name_span,
-					format!("flag `{}` defined twice", flag.name),
-					ExtendedErrorExplanation::custom(vec![
-						InfoExplanation {
-							span: dupe.1.clone(),
-							content: format!("`{}` defined here first", dupe.0),
-							level: InfoLevel::Info
-						},
-						InfoExplanation {
-							span: flag.name_span.clone(),
-							content: format!("`{}` defined here again", dupe.0),
-							level: InfoLevel::Error
-						},
-					])
+					format!("name `{}` defined multiple times", flag.name),
+					expl
 				));
 			}
-			seen_names.push((&flag.name, &flag.name_span));
+			seen_names.push((&flag.name, &flag.name_span, SeenNameType::Flag));
 
 			if is_sealed && flag.attrs.contains_key("@extension") {
 				return Err(pb_err!(
 					flag.name_span,
 					format!("tried to extend a `@sealed` struct"),
-					ExtendedErrorExplanation::custom(vec![
-						InfoExplanation {
+					ErrorInfo::custom(vec![
+						Diagnostic {
 							span: owner.get_name().1.clone(),
 							content: format!("`{}` marked as `@sealed` here...", owner.get_name().0),
 							level: InfoLevel::Info
 						},
-						InfoExplanation {
+						Diagnostic {
 							span: flag.name_span.clone(),
 							content: format!("...but contains an `@extension` flag here"),
 							level: InfoLevel::Error
 						},
-						InfoExplanation {
+						Diagnostic {
 							span: owner.get_name().1.clone(),
 							content: format!("`@extension` and `@sealed` are incompatible"),
 							level: InfoLevel::Info
@@ -525,8 +559,8 @@ impl<'d> PunybufValidator<'d> {
 						flag.name_span,
 						format!("an `@extension` flag cannot be defined on an \
 						`@extension_flags` field."),
-						ExtendedErrorExplanation::error_and(vec![
-							InfoExplanation {
+						ErrorInfo::error_and(vec![
+							Diagnostic {
 								span: owner.get_name().1.clone(),
 								level: InfoLevel::Info,
 								content: format!("`@extension_flags` marked here")
@@ -539,8 +573,8 @@ impl<'d> PunybufValidator<'d> {
 				return Err(pb_err!(
 					flag.name_span,
 					format!("a regular flag cannot follow an `@extension` flag"),
-					ExtendedErrorExplanation::error_and(vec![
-						InfoExplanation {
+					ErrorInfo::error_and(vec![
+						Diagnostic {
 							span: ext_span.clone(),
 							content: format!("this `@extension` flag is before `{}`", flag.name),
 							level: InfoLevel::Info
@@ -556,7 +590,7 @@ impl<'d> PunybufValidator<'d> {
 		Ok(())
 	}
 	pub fn validate_struct(&mut self, owner: &Owner, fields: &Vec<PBField>) -> Result<(), PunybufError> {
-		let mut seen_names: Vec<(&str, &Span)> = vec![];
+		let mut seen_names: Vec<(&str, &Span, SeenNameType)> = vec![];
 		let mut can_add_extension_flags = true;
 		for field in fields {
 			if field.attrs.contains_key("@extension") {
@@ -566,24 +600,39 @@ impl<'d> PunybufValidator<'d> {
 				));
 			}
 			if let Some(already_decl) = seen_names.iter().find(|n| *n.0 == field.name) {
+				let mut expl = ErrorInfo::custom(vec![
+					Diagnostic {
+						span: already_decl.1.clone(),
+						content: format!(
+							"{} `{}` defined here first",
+							already_decl.2,
+							already_decl.0
+						),
+						level: InfoLevel::Info
+					},
+					Diagnostic {
+						span: field.name_span.clone(),
+						content: format!("`{}` defined here again", already_decl.0),
+						level: InfoLevel::Error
+					},
+				]);
+				if already_decl.2 != SeenNameType::Field {
+					expl.after_error.push(Diagnostic {
+						span: owner.get_name().1.clone(),
+						content: format!(
+							"flags and struct fields share the namespace `{}`",
+							owner.get_name().0
+						),
+						level: InfoLevel::Tip
+					});
+				}
 				return Err(pb_err!(
 					already_decl.1,
-					format!("field `{}` defined twice", already_decl.0),
-					ExtendedErrorExplanation::custom(vec![
-						InfoExplanation {
-							span: already_decl.1.clone(),
-							content: format!("`{}` defined here first", already_decl.0),
-							level: InfoLevel::Info
-						},
-						InfoExplanation {
-							span: field.name_span.clone(),
-							content: format!("`{}` defined here again", already_decl.0),
-							level: InfoLevel::Error
-						},
-					])
+					format!("name `{}` defined multiple times", already_decl.0),
+					expl
 				));
 			}
-			seen_names.push((&field.name, &field.name_span));
+			seen_names.push((&field.name, &field.name_span, SeenNameType::Field));
 
 			let field_ref_def = self.validate_reference(&field.value, owner)?;
 			if let Some(flags) = &field.flags {
@@ -594,8 +643,8 @@ impl<'d> PunybufValidator<'d> {
 							field.value.reference_span,
 							format!("flag fields' types must be marked `@flags`, \
 							but `{}` is a generic parameter and cannot be constrained", field.value.reference),
-							ExtendedErrorExplanation::error_and(vec![
-								InfoExplanation {
+							ErrorInfo::error_and(vec![
+								Diagnostic {
 									span: span.clone(),
 									content: format!("generic parameters for `{}` defined here", owner.get_name().0),
 									level: InfoLevel::Info,
@@ -618,8 +667,8 @@ impl<'d> PunybufValidator<'d> {
 								flags.len(),
 								field.value.reference
 							),
-							ExtendedErrorExplanation::error_and(vec![
-								InfoExplanation {
+							ErrorInfo::error_and(vec![
+								Diagnostic {
 									span: field.value.reference_span.clone(),
 									content: format!(
 										"the maximum amount of flags is bounded by type `{}`",
@@ -629,13 +678,13 @@ impl<'d> PunybufValidator<'d> {
 								}
 							])
 						));
-					} else if (flags.len() < max_amount) {
+					} else if flags.len() < max_amount {
 						can_add_extension_flags = false;
 					}
 					Err(FlagsAttrError::Other(pbe)) => return Err(pbe),
 					Err(FlagsAttrError::NoAttribute(decl)) => {
-						let mut after_error: Vec<InfoExplanation> = vec![
-							InfoExplanation {
+						let mut after_error: Vec<Diagnostic> = vec![
+							Diagnostic {
 								span: decl_span.clone(),
 								content: format!(
 									"`{}` is defined here, without the `@flags` attribute",
@@ -646,7 +695,7 @@ impl<'d> PunybufValidator<'d> {
 						];
 						if *decl.get_name().0 != field.value.reference {
 							after_error.push(
-								InfoExplanation {
+								Diagnostic {
 									span: decl.get_name().1.clone(),
 									content: format!(
 										"...this alias leads to `{}`, also without the `@flags` attribute",
@@ -662,12 +711,12 @@ impl<'d> PunybufValidator<'d> {
 								"flag fields' types must be marked `@flags`, `{}` is not",
 								field.value.reference
 							),
-							ExtendedErrorExplanation::error_and(after_error)
+							ErrorInfo::error_and(after_error)
 						))
 					}
 					Err(FlagsAttrError::AliasGeneric { typedef, ref_to_generic }) => {
-						let mut after_error: Vec<InfoExplanation> = vec![
-							InfoExplanation {
+						let mut after_error: Vec<Diagnostic> = vec![
+							Diagnostic {
 								span: decl_span.clone(),
 								content: format!(
 									"`{}` is defined here, without the `@flags` attribute...",
@@ -678,7 +727,7 @@ impl<'d> PunybufValidator<'d> {
 						];
 						if *typedef.get_name().0 != field.value.reference {
 							after_error.push(
-								InfoExplanation {
+								Diagnostic {
 									span: typedef.get_name().1.clone(),
 									content: format!(
 										"...this alias leads to `{}`, also without the `@flags` attribute...",
@@ -689,14 +738,14 @@ impl<'d> PunybufValidator<'d> {
 							);
 						}
 						after_error.push(
-							InfoExplanation {
+							Diagnostic {
 								span: typedef.get_generics().1.clone(),
 								content: format!("...which defines its generic parameters here..."),
 								level: InfoLevel::Info
 							}
 						);
 						after_error.push(
-							InfoExplanation {
+							Diagnostic {
 								span: ref_to_generic.1.clone(),
 								content: format!(
 									"...and later aliases to `{}`, which cannot be constrained as `@flags`",
@@ -711,11 +760,11 @@ impl<'d> PunybufValidator<'d> {
 								"flag fields' types must be marked `@flags`, cannot verify if `{}< ... >` is",
 								field.value.reference
 							),
-							ExtendedErrorExplanation::error_and(after_error)
+							ErrorInfo::error_and(after_error)
 						))
 					},
 				}
-				self.validate_flags(owner, flags)?;
+				self.validate_flags(owner, flags, &mut seen_names)?;
 			}
 		}
 		
@@ -730,8 +779,41 @@ impl<'d> PunybufValidator<'d> {
 							fields on `{}` are exhausted.",
 							field.name, owner.get_name().0
 						),
-						ExtendedErrorExplanation::error_and(vec![
-							InfoExplanation {
+						ErrorInfo::error_and(vec![
+							Diagnostic {
+								span: owner.get_name().1.clone(),
+								level: InfoLevel::Tip,
+								content: format!(
+									"`{}` is defined here", owner.get_name().0
+								),
+							}
+						])
+					));
+				}
+				if field.flags.is_none() {
+					return Err(pb_err!(
+						field.name_span,
+						format!(
+							"fields marked @extension_flags must be flag fields"
+						)
+					))
+				}
+			}
+		}
+		
+		for field in fields {
+			if field.attrs.contains_key("@extension_flags") {
+				if !can_add_extension_flags {
+					return Err(pb_err!(
+						field.name_span,
+						format!(
+							"cannot mark field `{}` as \
+							@extension_flags, because not all flag \
+							fields on `{}` are exhausted.",
+							field.name, owner.get_name().0
+						),
+						ErrorInfo::error_and(vec![
+							Diagnostic {
 								span: owner.get_name().1.clone(),
 								level: InfoLevel::Tip,
 								content: format!(
@@ -762,14 +844,14 @@ impl<'d> PunybufValidator<'d> {
 			if let Some(already_decl) = seen_names.iter().find(|n| *n.0 == variant.name) {
 				return Err(pb_err!(
 					variant.name_span,
-					format!("enum variant `{}` defined twice", already_decl.0),
-					ExtendedErrorExplanation::custom(vec![
-						InfoExplanation {
+					format!("enum variant `{}` defined multiple times", already_decl.0),
+					ErrorInfo::custom(vec![
+						Diagnostic {
 							span: already_decl.1.clone(),
 							content: format!("`{}` defined here first", already_decl.0),
 							level: InfoLevel::Info
 						},
-						InfoExplanation {
+						Diagnostic {
 							span: variant.name_span.clone(),
 							content: format!("`{}` defined here again", already_decl.0),
 							level: InfoLevel::Error
@@ -793,8 +875,8 @@ impl<'d> PunybufValidator<'d> {
 					return Err(pb_err!(
 						variant.name_span,
 						format!("a `@default` enum variant cannot have an associated type"),
-						ExtendedErrorExplanation::error_and(vec![
-							InfoExplanation {
+						ErrorInfo::error_and(vec![
+							Diagnostic {
 								span: val.reference_span.clone(),
 								content: format!("the associated type is defined here"),
 								level: InfoLevel::Info
@@ -891,8 +973,8 @@ impl<'d> PunybufValidator<'d> {
 			return Err(pb_err!(
 				cmd.err_span,
 				format!("commands that return `Void` cannot respond with errors"),
-				ExtendedErrorExplanation::error_and(vec![
-					InfoExplanation {
+				ErrorInfo::error_and(vec![
+					Diagnostic {
 						span: cmd.ret.reference_span.clone(),
 						content: format!("`{}` is said to return `Void` here", cmd.name),
 						level: InfoLevel::Info
@@ -915,14 +997,14 @@ impl<'d> PunybufValidator<'d> {
 			if let Some(already_decl) = declared_things.iter().find(|x| x.0 == tp.get_name().0 && x.1 == tp.get_layer()) {
 				return Err(pb_err!(
 					already_decl.2,
-					format!("`{}` declared twice", already_decl.0),
-					ExtendedErrorExplanation::custom(vec![
-						InfoExplanation {
+					format!("`{}` declared multiple times", already_decl.0),
+					ErrorInfo::custom(vec![
+						Diagnostic {
 							span: already_decl.2.clone(),
 							content: format!("`{}` declared here first", already_decl.0),
 							level: InfoLevel::Info
 						},
-						InfoExplanation {
+						Diagnostic {
 							span: tp.get_name().1.clone(),
 							content: format!("`{}` declared here again", already_decl.0),
 							level: InfoLevel::Error
@@ -953,14 +1035,14 @@ impl<'d> PunybufValidator<'d> {
 				if already_decl.1 == &cmd.layer {
 					return Err(pb_err!(
 						already_decl.2,
-						format!("`{}` declared twice", already_decl.0),
-						ExtendedErrorExplanation::custom(vec![
-							InfoExplanation {
+						format!("`{}` declared multiple times", already_decl.0),
+						ErrorInfo::custom(vec![
+							Diagnostic {
 								span: already_decl.2.clone(),
 								content: format!("`{}` declared here first", already_decl.0),
 								level: InfoLevel::Info
 							},
-							InfoExplanation {
+							Diagnostic {
 								span: cmd.name_span.clone(),
 								content: format!("`{}` declared here again", already_decl.0),
 								level: InfoLevel::Error
@@ -973,8 +1055,8 @@ impl<'d> PunybufValidator<'d> {
 						already_decl.2,
 						format!("invalid redeclaration of `{}`; even in different layers, \
 							types can't become commands (and vice versa)", already_decl.0),
-						ExtendedErrorExplanation::custom(vec![
-							InfoExplanation {
+						ErrorInfo::custom(vec![
+							Diagnostic {
 								span: already_decl.2.clone(),
 								content: format!(
 									"`{}` declared here, in layer {}, as a type",
@@ -982,7 +1064,7 @@ impl<'d> PunybufValidator<'d> {
 								),
 								level: InfoLevel::Error
 							},
-							InfoExplanation {
+							Diagnostic {
 								span: cmd.name_span.clone(),
 								content: format!(
 									"`{}` declared here, in layer {}, as a command",
@@ -1008,14 +1090,14 @@ impl<'d> PunybufValidator<'d> {
 					cmd.name_span,
 					"by some miracle, two commands produce the same crc32 checksum, \
 						and thus, have the same command ID".to_string(),
-					ExtendedErrorExplanation::custom(vec![
-						InfoExplanation {
+					ErrorInfo::custom(vec![
+						Diagnostic {
 							span: other_span.clone(),
 							content: format!("command {other_name} of {other_layer}: \
 								`crc32(\"{other_name}.{other_layer}\") -> {}`", cmd.command_id),
 							level: InfoLevel::Info
 						},
-						InfoExplanation {
+						Diagnostic {
 							span: other_span.clone(),
 							content: format!("command {name} of {layer}: \
 								`crc32(\"{name}.{layer}\") -> {}`", cmd.command_id, name=cmd.name, layer=cmd.layer),
@@ -1031,10 +1113,10 @@ impl<'d> PunybufValidator<'d> {
 }
 
 impl PunybufDefinition {
-	pub fn as_validator(&self) -> PunybufValidator<'_> {
+	pub(crate) fn as_validator(&self) -> PunybufValidator<'_> {
 		PunybufValidator { definition: self, context_generic_params: vec![] }
 	}
-	pub fn validate(&self) -> Result<(), PunybufError> {
+	pub(crate) fn validate(&self) -> Result<(), PunybufError> {
 		self.as_validator().validate()
 	}
 }

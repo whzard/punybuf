@@ -2,9 +2,9 @@ use std::{env, fs::read_to_string, io, path::Path, rc::Rc};
 
 use crate::{
 	errors::{
-		ExtendedErrorExplanation, InfoExplanation, InfoLevel, PunybufError, BOLD, NORMAL, YELLOW,
+		BOLD, Diagnostic, ErrorInfo, InfoLevel, NORMAL, PunybufError, YELLOW
 	},
-	lexer::{IncludeHandler, Lexer, Loc, Span, Token},
+	lexer::{IncludeDisallowed, IncludeHandler, Lexer, Loc, Span, Token},
 	pb_err,
 };
 
@@ -32,13 +32,6 @@ fn lexer_from_file<'a>(file: &'a Path, include_handler: &'a mut FileIncludeHandl
 	let f_str = file.to_str().ok_or(io_err("Invalid UTF-8"))?;
 
 	Ok(Lexer::new(content, f_str, include_handler))
-}
-
-pub struct IncludeDisallowed;
-impl IncludeHandler for IncludeDisallowed {
-	fn handle_include(&mut self, _: String, include_span: Span) -> Result<Vec<Token>, PunybufError> {
-		Err(pb_err!(include_span, "include is not allowed here".to_string(), ExtendedErrorExplanation::empty()))
-	}
 }
 
 struct FileIncludeHandler {
@@ -75,7 +68,7 @@ impl IncludeHandler for FileIncludeHandler {
 				continue;
 			}
 
-			let warning = InfoExplanation {
+			let warning = Diagnostic {
 				span: include_span.clone(),
 				content: format!("\"{rp_string}\" included here again"),
 				level: InfoLevel::Warning
@@ -84,7 +77,7 @@ impl IncludeHandler for FileIncludeHandler {
 			let expl = if *i_span == Span::impossible() {
 				let command_start = format!("$ {} \"", env::args().next().unwrap_or("pbd".to_string()));
 				vec![
-					InfoExplanation {
+					Diagnostic {
 						span: Span {
 							loc_start: Loc { row: 0, col: command_start.len() },
 							loc_end: Loc { row: 0, col: command_start.len() + rp_string.len() },
@@ -98,7 +91,7 @@ impl IncludeHandler for FileIncludeHandler {
 				]
 			} else {
 				vec![
-					InfoExplanation {
+					Diagnostic {
 						span: i_span.clone(),
 						content: format!("\"{rp_string}\" included here first..."),
 						level: InfoLevel::Info
@@ -107,6 +100,7 @@ impl IncludeHandler for FileIncludeHandler {
 				]
 			};
 
+			// TODO: add a mechanism to output warnings some other way
 			eprint!("{YELLOW}{BOLD}warning:{NORMAL} \"{rp_string}\" included multiple times - ignored\n");
 			for (i, info) in expl.iter().enumerate() {
 				if i != 0 { eprint!("\n") }
@@ -122,8 +116,8 @@ impl IncludeHandler for FileIncludeHandler {
 			pb_err!(
 				include_span,
 				format!("I/O error while including \"{rp_str}\": {err}"),
-				ExtendedErrorExplanation::error_and(vec![
-					InfoExplanation {
+				ErrorInfo::error_and(vec![
+					Diagnostic {
 						content: format!("does this file exist?"),
 						span: include_span.clone(),
 						level: InfoLevel::Tip
@@ -134,18 +128,13 @@ impl IncludeHandler for FileIncludeHandler {
 		match l.lex() {
 			Ok(x) => Ok(x),
 			Err(mut error) => {
-				match error.explanation {
-					Some(ref mut expl) => {
-						// This only applies to lexer errors, which is very limited
-						// in scope, but it's not really that useful anyway...
-						expl.after_error.push(InfoExplanation {
-							content: format!("...\"{include_path}\" gets included here"),
-							span: include_span.clone(),
-							level: InfoLevel::Info
-						});
-					},
-					None => {}
-				}
+				// This only applies to lexer errors, which is very limited
+				// in scope, but it's not really that useful anyway...
+				error.info.after_error.push(Diagnostic {
+					content: format!("...\"{include_path}\" gets included here"),
+					span: include_span.clone(),
+					level: InfoLevel::Info
+				});
 
 				Err(error)
 			}

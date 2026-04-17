@@ -1,0 +1,12 @@
+@builtin
+Builtin = Builtin
+
+InextensibleEnum = [
+	Yes, No,
+]
+
+ExtensibleEnum = [
+	Maybe,
+	Yes, No,
+	@extension IDK: Builtin
+]
