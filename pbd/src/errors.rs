@@ -67,6 +67,13 @@ impl Diagnostic {
 		}
 	}
 	pub fn explain(&self) -> String {
+		if self.span == Span::impossible() {
+			let color = self.level.get_ansi_color();
+			return format!(
+				"{color}    - {content}{NORMAL}",
+				content = self.content
+			)
+		}
 		let contents = self.span.file_contents.clone();
 		let line = contents.lines()
 			.nth(self.span.loc_start.row)
@@ -82,18 +89,19 @@ impl Diagnostic {
 		let color = self.level.get_ansi_color();
 		let symbol = self.level.get_symbol();
 
-		format!("\
-{BLUE}--> {GRAY}{}:{}:{}
-{BLUE}    |
-{: >3} | {NORMAL}{}
-{BLUE}    | {}{BOLD}{color}{}{NORMAL}{color} {}{NORMAL}\
-",
-			self.span.file_name, self.span.loc_start.row + 1, self.span.loc_start.col + 1,
-			self.span.loc_start.row + 1,
-			line,
-			" ".repeat(self.span.loc_start.col),
-			symbol.repeat(extend_for),
-			self.content
+		format!(
+			"\
+			{BLUE}--> {GRAY}{file}:{row}:{col}\n\
+			{BLUE}    |\n\
+			{row: >3} | {NORMAL}{line}\n\
+			{BLUE}    | {spaces}{BOLD}{color}{symbol}{NORMAL}{color} {content}{NORMAL}\
+			",
+			file = self.span.file_name,
+			row = self.span.loc_start.row + 1,
+			col = self.span.loc_start.col + 1,
+			spaces = " ".repeat(self.span.loc_start.col),
+			symbol = symbol.repeat(extend_for),
+			content = self.content
 		)
 	}
 }
