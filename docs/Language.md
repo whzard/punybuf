@@ -218,6 +218,13 @@ Commands may also take no argument, or a single type:
 getMe: () -> User
 getUserByID: U64 -> User ![InvalidID]
 ```
+
+If the command doesn't need any acknowledgement and shouldn't return any errors, you can use the special type `Void` as the return type.
+```pbd
+pokeUserByID: U64 -> Void
+```
+Those commands won't return a response, but they should usually still be reliably recieved, that depends on the networking stack.
+
 That's it. Over time though, your application will probably need to extend its protocol to support new features. Unless you can guarentee that both ends of a Punybuf RPC channel will stay up-to-date, you might need to support outdated clients. There are two ways to do this.
 
 ## Extensions
@@ -263,11 +270,7 @@ User = {
 	favorite_things: Array<String>
 	current_mood: UserMood
 
-<<<<<<< HEAD
-	flags: U8.{
-=======
 	U8.{
->>>>>>> i-messed-up
 		is_friend?
 		likes_cats?
 		preferred_color?: Color {
