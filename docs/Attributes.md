@@ -56,6 +56,22 @@ Disallow [extensions](Language.md#extensions) on this struct.
 
 Mark this enum variant as the default and allow the enum to be [extensible](Language.md#extending-enums).
 
+## `@name(overridden_name)`
+> applied to **commands** by the **compiler**
+
+Override the name of this command during ID generation: The ID will be generated using `crc32("{overridden_name}.{layer}")`, where `layer` is the layer of this command.
+
+You can put anything inside the `overridden_name`, including special characters. This is also useful for renaming the command while still keeping the old ID.
+
+Conflicts with [`@id`](#idoverridden_id) on this command.
+
+## `@id(overridden_id)`
+> applied to **commands** by the **compiler**
+
+Override the ID of this command. Careful, the ID must be unique across all layers.
+
+Conflicts with [`@name`](#nameoverridden_name) on this command.
+
 ## `@builtin`
 > applied to **any type** by both the **compiler** and the **implementation**
 
