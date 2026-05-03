@@ -2,11 +2,10 @@ use std::{collections::HashMap, fmt::Display, u32};
 
 use crate::{
 	errors::{
-		parser_err, pb_err, ErrorInfo, Diagnostic, InfoLevel, PunybufError,
+		Diagnostic, ErrorInfo, InfoLevel, PunybufError, parser_err, pb_err
 	},
 	flattener::{
-		PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBFieldFlag, PBTypeDef, PBTypeRef,
-		PunybufDefinition,
+		PB_CRC, PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBFieldFlag, PBTypeDef, PBTypeRef, PunybufDefinition
 	},
 	lexer::Span,
 };
@@ -1026,7 +1025,7 @@ impl<'d> PunybufValidator<'d> {
 			}
 		}
 
-		let mut just_in_case_seen_ids = HashMap::<u32, (&str, &u32, &Span)>::new();
+		let mut seen_ids = HashMap::<u32, (&str, &u32, &Span)>::new();
 		for cmd in &self.definition.commands {
 			if let Some(already_decl) = declared_things
 				.iter()
@@ -1084,29 +1083,72 @@ impl<'d> PunybufValidator<'d> {
 			declared_things.push((&cmd.name, &cmd.layer, &cmd.name_span, ThingKind::Command));
 			self.validate_command(cmd)?;
 
-			if let Some((other_name, other_layer, other_span)) = just_in_case_seen_ids.remove(&cmd.command_id) {
-				// doesn't check the crc32 after resolution, but bro cmon
+			if let Some((other_name, other_layer, other_span)) =
+				seen_ids.remove(&cmd.command_id)
+			{
+				#[allow(unused_parens)]
+				if (
+					PB_CRC.checksum(format!("{}.{}", other_name, other_layer).as_bytes()) ==
+					PB_CRC.checksum(format!("{}.{}", cmd.name, cmd.layer).as_bytes())
+				) {
+					return Err(pb_err!(
+						cmd.name_span,
+						"by some miracle, two commands produce the same crc32 checksum, \
+							and thus, have the same command ID".to_string(),
+						ErrorInfo::custom(vec![
+							Diagnostic {
+								span: other_span.clone(),
+								content: format!("command {other_name} of layer {other_layer}: \
+									`crc32(\"{other_name}.{other_layer}\") -> {}`", cmd.command_id),
+								level: InfoLevel::Info
+							},
+							Diagnostic {
+								span: other_span.clone(),
+								content: format!("command {name} of layer {layer}: \
+									`crc32(\"{name}.{layer}\") -> {}`",
+									cmd.command_id, name=cmd.name, layer=cmd.layer),
+								level: InfoLevel::Error
+							},
+							Diagnostic {
+								span: Span::impossible(),
+								content: "tip: you can use @name or @id attributes \
+								to override the ID".into(),
+								level: InfoLevel::Tip
+							}
+						])
+					));
+				}
 				return Err(pb_err!(
 					cmd.name_span,
-					"by some miracle, two commands produce the same crc32 checksum, \
-						and thus, have the same command ID".to_string(),
+					"duplicate command IDs".to_string(),
 					ErrorInfo::custom(vec![
 						Diagnostic {
 							span: other_span.clone(),
-							content: format!("command {other_name} of {other_layer}: \
-								`crc32(\"{other_name}.{other_layer}\") -> {}`", cmd.command_id),
+							content: format!(
+								"command {other_name} of layer {other_layer} has ID {}",
+								cmd.command_id
+							),
 							level: InfoLevel::Info
 						},
 						Diagnostic {
 							span: other_span.clone(),
-							content: format!("command {name} of {layer}: \
-								`crc32(\"{name}.{layer}\") -> {}`", cmd.command_id, name=cmd.name, layer=cmd.layer),
+							content: format!(
+								"command {} of layer {} also has ID {}",
+								cmd.name, cmd.layer,
+								cmd.command_id
+							),
 							level: InfoLevel::Error
+						},
+						Diagnostic {
+							span: Span::impossible(),
+							content: "tip: maybe the @name or @id \
+							attributes of these commands are in conflict?".into(),
+							level: InfoLevel::Tip
 						}
 					])
 				));
 			}
-			just_in_case_seen_ids.insert(cmd.command_id, (&cmd.name, &cmd.layer, &cmd.name_span));
+			seen_ids.insert(cmd.command_id, (&cmd.name, &cmd.layer, &cmd.name_span));
 		}
 		Ok(())
 	}

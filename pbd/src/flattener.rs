@@ -2,12 +2,12 @@ use crc::{Crc, CRC_32_CKSUM};
 use std::collections::HashMap;
 
 use crate::{
-	errors::{parser_err, ErrorInfo, PunybufError},
+	errors::{ErrorInfo, PunybufError, parser_err},
 	lexer::Span,
 	parser::{
 		CommandArgument, Declaration, DeclarationValue, EnumVariant, Field,
 		FlexibleDeclarationValue, ValueEnumVariant, ValueReference,
-	},
+	}, pb_err,
 };
 
 pub(crate) const PB_CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_CKSUM);
@@ -416,7 +416,31 @@ pub(crate) fn flatten(decls: Vec<Declaration>, includes_common: bool) -> Result<
 
 				let ret = def.flatten_reference(*ret);
 
-				let command_id = PB_CRC.checksum(format!("{}.{}", decl.symbol, layer).as_bytes());
+				let command_id = if let Some(Some(override_id)) = decl.attrs.get("@id") {
+					if let Some(_) = decl.attrs.get("@name") {
+						return Err(pb_err!(
+							decl.symbol_span,
+							format!("cannot have both @id and @name on one command")
+						));
+					}
+					override_id.parse::<u32>().map_err(|e|
+						pb_err!(
+							decl.symbol_span,
+							format!("failed to parse @id({override_id}): {e}")
+						)
+					)?
+				} else {
+					let attr = decl.attrs.get("@name");
+					PB_CRC.checksum(format!(
+						"{}.{}",
+						if let Some(Some(override_name)) = attr {
+							override_name
+						} else {
+							&decl.symbol
+						},
+						layer
+					).as_bytes())
+				};
 
 				def.commands.push(PBCommandDef {
 					name: decl.symbol,

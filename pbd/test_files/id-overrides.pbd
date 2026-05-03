@@ -1,0 +1,17 @@
+@builtin
+Builtin = Builtin
+
+MyStruct = {
+	field_one: Builtin
+	field_two: Builtin
+}
+
+MyEnum = [
+	One, Two: Builtin
+]
+
+@name(you should see the other guy) # expected id: 2483973438
+guy: () -> MyStruct
+
+@id(67)
+theOtherGuy: () -> MyEnum

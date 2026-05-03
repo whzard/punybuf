@@ -1,0 +1,17 @@
+@builtin
+Builtin = Builtin
+
+MyStruct = {
+	field_one: Builtin
+	field_two: Builtin
+}
+
+MyEnum = [
+	One, Two: Builtin
+]
+
+@name(uh-oh)
+overriddenName: () -> MyEnum
+
+@name(uh-oh)
+alsoOverriddenName: () -> MyStruct

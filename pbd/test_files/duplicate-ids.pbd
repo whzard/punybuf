@@ -1,0 +1,17 @@
+@builtin
+Builtin = Builtin
+
+MyStruct = {
+	field_one: Builtin
+	field_two: Builtin
+}
+
+MyEnum = [
+	One, Two: Builtin
+]
+
+@id(67)
+overriddenID: () -> MyEnum
+
+@id(67)
+alsoOverriddenID: () -> MyStruct
