@@ -138,7 +138,7 @@ impl<'d> PunybufValidator<'d> {
 								Diagnostic {
 									span: owner.get_name().1.clone(),
 									content: format!("`{}` is mentioned here", decl.get_name().0),
-									level: InfoLevel::Tip
+									level: InfoLevel::Info
 								}
 							])
 						)
@@ -157,7 +157,7 @@ impl<'d> PunybufValidator<'d> {
 									Diagnostic {
 										span: owner.get_name().1.clone(),
 										content: format!("`{}` is mentioned here", decl.get_name().0),
-										level: InfoLevel::Tip
+										level: InfoLevel::Info
 									}
 								])
 							)
@@ -517,7 +517,7 @@ impl<'d> PunybufValidator<'d> {
 							"flags and struct fields share the namespace `{}`",
 							owner.get_name().0
 						),
-						level: InfoLevel::Tip
+						level: InfoLevel::Info
 					});
 				}
 				return Err(pb_err!(
@@ -544,8 +544,8 @@ impl<'d> PunybufValidator<'d> {
 							level: InfoLevel::Error
 						},
 						Diagnostic {
-							span: owner.get_name().1.clone(),
-							content: format!("`@extension` and `@sealed` are incompatible"),
+							span: Span::impossible(),
+							content: format!("info: `@extension` and `@sealed` are incompatible"),
 							level: InfoLevel::Info
 						}
 					])
@@ -622,7 +622,7 @@ impl<'d> PunybufValidator<'d> {
 							"flags and struct fields share the namespace `{}`",
 							owner.get_name().0
 						),
-						level: InfoLevel::Tip
+						level: InfoLevel::Info
 					});
 				}
 				return Err(pb_err!(
@@ -781,7 +781,7 @@ impl<'d> PunybufValidator<'d> {
 						ErrorInfo::error_and(vec![
 							Diagnostic {
 								span: owner.get_name().1.clone(),
-								level: InfoLevel::Tip,
+								level: InfoLevel::Info,
 								content: format!(
 									"`{}` is defined here", owner.get_name().0
 								),
@@ -814,7 +814,7 @@ impl<'d> PunybufValidator<'d> {
 						ErrorInfo::error_and(vec![
 							Diagnostic {
 								span: owner.get_name().1.clone(),
-								level: InfoLevel::Tip,
+								level: InfoLevel::Info,
 								content: format!(
 									"`{}` is defined here", owner.get_name().0
 								),

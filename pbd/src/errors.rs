@@ -70,7 +70,7 @@ impl Diagnostic {
 		if self.span == Span::impossible() {
 			let color = self.level.get_ansi_color();
 			return format!(
-				"{color}    - {content}{NORMAL}",
+				"{color}    {BOLD}={NORMAL}{color} {content}{NORMAL}",
 				content = self.content
 			)
 		}

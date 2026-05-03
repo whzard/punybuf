@@ -329,7 +329,7 @@ impl<'parser> Parser<'parser> {
 												),
 												ErrorInfo::error_and(vec![
 													Diagnostic {
-														span: next.span.clone(),
+														span: Span::impossible(),
 														content: format!(
 															"if this is intended to be a value-enum \
 															declaration, put the name of the value-enum \
@@ -590,7 +590,7 @@ impl<'parser> Parser<'parser> {
 									anonymous flags".to_string(),
 									ErrorInfo::error_and(vec![
 										Diagnostic {
-											span: next.span.clone(),
+											span: Span::impossible(),
 											level: InfoLevel::Tip,
 											content: format!(
 												"this is a technichal limitation of the \

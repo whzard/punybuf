@@ -119,7 +119,7 @@ impl IncludeHandler for FileIncludeHandler {
 				ErrorInfo::error_and(vec![
 					Diagnostic {
 						content: format!("does this file exist?"),
-						span: include_span.clone(),
+						span: Span::impossible(),
 						level: InfoLevel::Tip
 					}
 				])
