@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::{iter::Peekable, slice::Iter, vec};
 
+use crate::diagnostic;
 use crate::errors::{
 	parser_err, pb_err, ErrorInfo, Diagnostic, InfoLevel, PunybufError,
 };
@@ -177,16 +178,14 @@ impl<'parser> Parser<'parser> {
 							tk.span,
 							format!("documentation defined twice"),
 							ErrorInfo::custom(vec![
-								Diagnostic {
-									span: first_span.clone(),
-									content: format!("documentation defined here first"),
-									level: InfoLevel::Info
-								},
-								Diagnostic {
-									span: tk.span.clone(),
-									content: format!("...then defined here again"),
-									level: InfoLevel::Error
-								},
+								diagnostic!(Info,
+									first_span.clone(),
+									format!("documentation defined here first")
+								),
+								diagnostic!(Error,
+									tk.span.clone(),
+									format!("...then defined here again")
+								),
 							])
 						));
 					}
@@ -328,15 +327,15 @@ impl<'parser> Parser<'parser> {
 													or an identifier, got {next}"
 												),
 												ErrorInfo::error_and(vec![
-													Diagnostic {
-														span: Span::impossible(),
-														content: format!(
+													diagnostic!(
+														Tip,
+														Span::impossible(),
+														format!(
 															"if this is intended to be a value-enum \
 															declaration, put the name of the value-enum \
 															before the parentheses"
-														),
-														level: InfoLevel::Tip
-													}
+														)
+													)
 												])
 											));
 									}
@@ -380,15 +379,14 @@ impl<'parser> Parser<'parser> {
 												span: span.extend(&decl_span),
 												error: format!("all errors must be enums (or value-enums)"),
 												info: ErrorInfo::error_and(vec![
-													Diagnostic {
-														span: decl_span,
-														content: format!(
+													diagnostic!(Tip,
+														decl_span,
+														format!(
 															"give a name to this struct and declare \
 															it inline as part of a value-enum, \
 															like `!(ErrorName {{ ... }})`"
-														),
-														level: InfoLevel::Tip
-													}
+														)
+													)
 												])
 											});
 										}
@@ -561,14 +559,13 @@ impl<'parser> Parser<'parser> {
 									span: next.span.clone(),
 									error: "expected a `:` after the field name, got `?`".to_string(),
 									info: ErrorInfo::error_and(vec![
-										Diagnostic {
-											content: format!(
+										diagnostic!(Tip,
+											before_inline_decl.clone(),
+											format!(
 												"if this is inteded to be a flag, \
 												put a dot (`.`) after this inline declaration's identifier"
-											),
-											span: before_inline_decl.clone(),
-											level: InfoLevel::Tip,
-										}
+											)
+										)
 									])
 								});
 							} else {
@@ -589,15 +586,14 @@ impl<'parser> Parser<'parser> {
 									"generic parameters cannot be defined on the type of \
 									anonymous flags".to_string(),
 									ErrorInfo::error_and(vec![
-										Diagnostic {
-											span: Span::impossible(),
-											level: InfoLevel::Tip,
-											content: format!(
+										diagnostic!(Tip,
+											Span::impossible(),
+											format!(
 												"this is a technichal limitation of the \
 												pbd compiler; try writing `flags: {}<...>.{{ ... }}`",
 												field_name
-											),
-										}
+											)
+										)
 									])
 								));
 							} else {
@@ -870,23 +866,21 @@ impl<'parser> Parser<'parser> {
 										span: token.span.clone(),
 										error: "flags (optional fields) cannot contain flag fields".to_string(),
 										info: ErrorInfo::error_and(vec![
-											Diagnostic {
-												content: format!(
+											diagnostic!(Tip,
+												dot_span.clone(),
+												format!(
 													"try removing this period \
 													to make `{flag_name}` into a regular field"
-												),
-												span: dot_span.clone(),
-												level: InfoLevel::Tip,
-											},
-											Diagnostic {
-												content: format!(
+												)
+											),
+											diagnostic!(Tip,
+												// if this is reached, refr is always `Some(...)`
+												refr.unwrap().get_name_span().clone(),
+												format!(
 													"...or try defining `{flag_name}`'s \
 													type so that it contains a flag field"
-												),
-												// if this is reached, refr is always `Some(...)`
-												span: refr.unwrap().get_name_span().clone(),
-												level: InfoLevel::Tip,
-											},
+												)
+											),
 										])
 									});
 								}
@@ -948,21 +942,20 @@ impl<'parser> Parser<'parser> {
 						let generics = Parser::parse_generics(&inside, layer)?;
 						match peekable.peek() {
 							Some(Token { data: TokenData::CurlyBraces(_), span: braces_span }) => {
-								return Err(PunybufError {
-									span: braces_span.clone(),
-									error: format!(
+								return Err(pb_err!(
+									braces_span,
+									format!(
 										"unexpected `{{ ... }}`; \
 										you cannot define generic parameters \
 										for inline declarations, such as `{name}`"
 									),
-									info: ErrorInfo::error_and(vec![
-										Diagnostic {
-											content: format!("generics for `{name}` defined here"),
-											span: span.clone(),
-											level: InfoLevel::Info,
-										}
+									ErrorInfo::error_and(vec![
+										diagnostic!(Info,
+											span.clone(),
+											format!("generics for `{name}` defined here")
+										)
 									])
-								});
+								));
 							}
 							_ => {}
 						};

@@ -1,11 +1,9 @@
 use std::{env, fs::read_to_string, io, path::Path, rc::Rc};
 
 use crate::{
-	errors::{
+	diagnostic, errors::{
 		BOLD, Diagnostic, ErrorInfo, InfoLevel, NORMAL, PunybufError, YELLOW
-	},
-	lexer::{IncludeDisallowed, IncludeHandler, Lexer, Loc, Span, Token},
-	pb_err,
+	}, lexer::{IncludeDisallowed, IncludeHandler, Lexer, Loc, Span, Token}, pb_err
 };
 
 const COMMON: &str = include_str!("../baked/common.pbd");
@@ -68,34 +66,31 @@ impl IncludeHandler for FileIncludeHandler {
 				continue;
 			}
 
-			let warning = Diagnostic {
-				span: include_span.clone(),
-				content: format!("\"{rp_string}\" included here again"),
-				level: InfoLevel::Warning
-			};
+			let warning = diagnostic!(Warning,
+				include_span.clone(),
+				format!("\"{rp_string}\" included here again")
+			);
 
 			let expl = if *i_span == Span::impossible() {
 				let command_start = format!("$ {} \"", env::args().next().unwrap_or("pbd".to_string()));
 				vec![
-					Diagnostic {
-						span: Span {
+					diagnostic!(Info,
+						Span {
 							loc_start: Loc { row: 0, col: command_start.len() },
 							loc_end: Loc { row: 0, col: command_start.len() + rp_string.len() },
 							file_name: "<shell>".to_string(),
 							file_contents: Rc::new(format!("{command_start}{rp_string}\""))
 						},
-						content: format!("\"{rp_string}\" is the entry point..."),
-						level: InfoLevel::Info
-					},
+						format!("\"{rp_string}\" is the entry point...")
+					),
 					warning
 				]
 			} else {
 				vec![
-					Diagnostic {
-						span: i_span.clone(),
-						content: format!("\"{rp_string}\" included here first..."),
-						level: InfoLevel::Info
-					},
+					diagnostic!(Info,
+						i_span.clone(),
+						format!("\"{rp_string}\" included here first...")
+					),
 					warning
 				]
 			};
@@ -117,11 +112,10 @@ impl IncludeHandler for FileIncludeHandler {
 				include_span,
 				format!("I/O error while including \"{rp_str}\": {err}"),
 				ErrorInfo::error_and(vec![
-					Diagnostic {
-						content: format!("does this file exist?"),
-						span: Span::impossible(),
-						level: InfoLevel::Tip
-					}
+					diagnostic!(Tip,
+						Span::impossible(),
+						format!("does this file exist?")
+					)
 				])
 			)
 		})?;
@@ -130,11 +124,10 @@ impl IncludeHandler for FileIncludeHandler {
 			Err(mut error) => {
 				// This only applies to lexer errors, which is very limited
 				// in scope, but it's not really that useful anyway...
-				error.info.after_error.push(Diagnostic {
-					content: format!("...\"{include_path}\" gets included here"),
-					span: include_span.clone(),
-					level: InfoLevel::Info
-				});
+				error.info.after_error.push(diagnostic!(Info,
+					include_span.clone(),
+					format!("...\"{include_path}\" gets included here")
+				));
 
 				Err(error)
 			}

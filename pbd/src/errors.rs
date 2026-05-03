@@ -70,7 +70,9 @@ impl Diagnostic {
 		if self.span == Span::impossible() {
 			let color = self.level.get_ansi_color();
 			return format!(
-				"{color}    {BOLD}={NORMAL}{color} {content}{NORMAL}",
+				// help i have no idea how to make it
+				// pretty
+				"{color}    {BOLD}-{NORMAL}{color} {content}{NORMAL}",
 				content = self.content
 			)
 		}
@@ -169,6 +171,19 @@ impl ErrorInfo {
 		result
 	}
 }
+
+#[macro_export]
+macro_rules! diagnostic {
+	($level:ident, $span:expr, $content:expr) => {
+		Diagnostic {
+			level: InfoLevel::$level,
+			span: $span,
+			content: $content,
+		}
+	};
+}
+
+pub(crate) use diagnostic;
 
 #[macro_export]
 /// (span: Span, error: String, info: ErrorInfo)
