@@ -1016,7 +1016,7 @@ impl<'d> PunybufValidator<'d> {
 								cmd.name_span.clone(),
 								format!(
 									"`{}` declared here, in layer {}, as a command",
-									already_decl.0, already_decl.1
+									cmd.name, cmd.layer
 								)
 							),
 						])

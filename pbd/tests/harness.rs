@@ -1,6 +1,4 @@
-use std::{env::{self, args}, fs, panic::catch_unwind, path::Path};
-
-use clap::builder::Str;
+use std::{env, fs, panic::catch_unwind, path::Path};
 use punybuf::{PunybufParser, convert_full_definition};
 
 pub const RED: &str = "\x1b[91m";
