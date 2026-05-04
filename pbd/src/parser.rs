@@ -471,7 +471,7 @@ impl<'parser> Parser<'parser> {
 	}
 
 	fn parse_generics(tokens: &Vec<Token>, layer: u32) -> Result<Vec<ValueReference>, PunybufError> {
-		let mut gen = Vec::new();
+		let mut generics = Vec::new();
 		let mut peekable = tokens.iter().peekable();
 
 		while let Some(_) = peekable.peek() {
@@ -487,10 +487,10 @@ impl<'parser> Parser<'parser> {
 				}
 				_ => {}
 			}
-			gen.push(refr);
+			generics.push(refr);
 		}
 
-		Ok(gen)
+		Ok(generics)
 	}
 
 	/// Consumes the next token, which is expected to be (), {} or []

@@ -147,11 +147,11 @@ impl RustCodegen {
 			result.push('<');
 		}
 
-		for (i, gen) in refr.generics.iter().enumerate() {
+		for (i, generics) in refr.generics.iter().enumerate() {
 			if i != 0 {
 				result.push_str(", ");
 			}
-			result.push_str(&self.gen_reference(gen, turbofish));
+			result.push_str(&self.gen_reference(generics, turbofish));
 		}
 		result.push('>');
 		return result;

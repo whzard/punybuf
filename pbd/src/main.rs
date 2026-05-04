@@ -88,12 +88,10 @@ fn main() {
 		if let Some(compat) = check_binary {
 			let json = read_to_string(compat).map_err(|e| e.to_string())?;
 			binary_compat::BinaryCompat::new(&json, &def)?.check().map_err(|mut e| {
-				let mut expl = e.info;
-				expl.before_error.push(diagnostic!(Info,
+				e.info.before_error.push(diagnostic!(Warning,
 					Span::impossible(),
 					format!("\"{file}\" is not binary compatible with \"{compat}\":")
 				));
-				e.info = expl;
 				e.to_string()
 			})?;
 		}

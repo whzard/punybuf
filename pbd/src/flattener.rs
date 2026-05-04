@@ -229,7 +229,7 @@ impl PunybufDefinition {
 					remove_whitespace = Some(whitespace_count)
 				}
 
-				let Some(mut whitespace_count) = &remove_whitespace else { continue };
+				let Some(mut whitespace_count) = remove_whitespace else { continue };
 
 				for (char_index, c) in line.chars().enumerate() {
 					if !c.is_whitespace() {
