@@ -59,6 +59,7 @@ fn main() {
 	let dry = args.get_flag("dry-run");
 	let verbose = args.get_flag("verbose");
 	let resolve = !args.get_flag("no-resolve");
+	let docs = !args.get_flag("no-docs");
 	let check_binary = args.get_one::<String>("compat");
 
 	macro_rules! verboseln {
@@ -88,7 +89,7 @@ fn main() {
 		if let Some(compat) = check_binary {
 			let json = read_to_string(compat).map_err(|e| e.to_string())?;
 			binary_compat::BinaryCompat::new(&json, &def)?.check().map_err(|mut e| {
-				e.info.before_error.push(diagnostic!(Warning,
+				e.before_error.push(diagnostic!(Warning,
 					Span::impossible(),
 					format!("\"{file}\" is not binary compatible with \"{compat}\":")
 				));
@@ -101,7 +102,7 @@ fn main() {
 			let mut file_type = "unknown";
 			let generated = if out_file.ends_with(".rs") {
 				file_type = "Rust";
-				RustCodegen::new(args.get_flag("rust:tokio"), !args.get_flag("no-docs")).codegen(&def)
+				RustCodegen::new(args.get_flag("rust:tokio"), docs).codegen(&def)
 
 			} else if out_file.ends_with(".json") {
 				file_type = "JSON";

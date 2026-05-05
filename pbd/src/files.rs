@@ -111,12 +111,12 @@ impl IncludeHandler for FileIncludeHandler {
 			pb_err!(
 				include_span,
 				format!("I/O error while including \"{rp_str}\": {err}"),
-				ErrorInfo::error_and(vec![
+				after_error: vec![
 					diagnostic!(Tip,
 						Span::impossible(),
 						format!("does this file exist?")
 					)
-				])
+				]
 			)
 		})?;
 		match l.lex() {
@@ -124,7 +124,7 @@ impl IncludeHandler for FileIncludeHandler {
 			Err(mut error) => {
 				// This only applies to lexer errors, which is very limited
 				// in scope, but it's not really that useful anyway...
-				error.info.after_error.push(diagnostic!(Info,
+				error.after_error.push(diagnostic!(Info,
 					include_span.clone(),
 					format!("...\"{include_path}\" gets included here")
 				));

@@ -7,14 +7,49 @@ use crate::lexer::Span;
 
 #[derive(Debug)]
 pub struct PunybufError {
-	pub span: Span,
-	pub error: String,
-	pub info: ErrorInfo
+	pub display_error: bool,
+	pub error: Diagnostic,
+	pub before_error: Vec<Diagnostic>,
+	pub after_error: Vec<Diagnostic>,
+}
+
+impl PunybufError {
+	pub fn default() -> Self {
+		Self {
+			error: Diagnostic {
+				content: "".into(), span: Span::impossible(), level: InfoLevel::Info
+			},
+			display_error: true, before_error: vec![], after_error: vec![]
+		}
+	}
+	fn explain(&self) -> String {
+		let mut result = String::new();
+		for (i, info) in self.before_error.iter().enumerate() {
+			if i != 0 {
+				result.push_str("\n\n");
+			}
+			result.push_str(&info.explain());
+		}
+		
+		if self.display_error {
+			if !self.before_error.is_empty() {
+				result.push_str("\n\n");
+			}
+			result.push_str(&self.error.explain());
+		}
+
+		for info in &self.after_error {
+			result.push_str("\n\n");
+			result.push_str(&info.explain());
+		}
+
+		result
+	}
 }
 
 impl Display for PunybufError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}\n{}", self.error, self.info.explain(&self))
+		write!(f, "{}\n{}", self.error.content, self.explain())
 	}
 }
 
@@ -23,6 +58,7 @@ pub const BLUE: &str = "\x1b[94m";
 pub const YELLOW: &str = "\x1b[93m";
 pub const NORMAL: &str = "\x1b[0m";
 pub const GRAY: &str = "\x1b[30m";
+#[allow(unused)] // this is not true, this constant is used in main.rs
 pub const GREEN: &str = "\x1b[32m";
 #[allow(unused)]
 pub const INTENSE: &str = "\x1b[97m";
@@ -59,13 +95,6 @@ pub struct Diagnostic {
 	pub level: InfoLevel,
 }
 impl Diagnostic {
-	pub fn from_error(error: &PunybufError) -> Self {
-		Self {
-			content: error.error.clone(),
-			span: error.span.clone(),
-			level: InfoLevel::Error
-		}
-	}
 	pub fn explain(&self) -> String {
 		if self.span == Span::impossible() {
 			let color = self.level.get_ansi_color();
@@ -137,7 +166,7 @@ impl ErrorInfo {
 			explain_error: true
 		}
 	}
-	pub fn custom(vec: Vec<Diagnostic>) -> Self {
+	pub fn instead(vec: Vec<Diagnostic>) -> Self {
 		Self {
 			before_error: vec,
 			after_error: Vec::new(),
@@ -146,37 +175,11 @@ impl ErrorInfo {
 	}
 }
 
-impl ErrorInfo {
-	fn explain(&self, error: &PunybufError) -> String {
-		let mut result = String::new();
-		for (i, info) in self.before_error.iter().enumerate() {
-			if i != 0 {
-				result.push_str("\n\n");
-			}
-			result.push_str(&info.explain());
-		}
-		
-		if self.explain_error {
-			if !self.before_error.is_empty() {
-				result.push_str("\n\n");
-			}
-			result.push_str(&Diagnostic::from_error(error).explain());
-		}
-
-		for info in &self.after_error {
-			result.push_str("\n\n");
-			result.push_str(&info.explain());
-		}
-
-		result
-	}
-}
-
 #[macro_export]
 macro_rules! diagnostic {
 	($level:ident, $span:expr, $content:expr) => {
-		Diagnostic {
-			level: InfoLevel::$level,
+		crate::errors::Diagnostic {
+			level: crate::errors::InfoLevel::$level,
 			span: $span,
 			content: $content,
 		}
@@ -189,17 +192,42 @@ pub(crate) use diagnostic;
 /// (span: Span, error: String, info: ErrorInfo)
 macro_rules! pb_err {
 	($span:expr, $err:expr, $expl:expr) => {
-		PunybufError {
-			span: $span.clone(),
-			error: $err,
-			info: $expl,
+		{
+			use crate::errors::diagnostic;
+			let e = $expl;
+			PunybufError {
+				before_error: e.before_error,
+				after_error: e.after_error,
+				display_error: e.explain_error,
+				error: diagnostic!(Error,
+					$span.clone(),
+					$err
+				),
+			}
+		}
+	};
+	($span:expr, $err:expr, $($prop_name:ident: $prop:expr),+) => {
+		{
+			use crate::errors::diagnostic;
+			PunybufError {
+				error: diagnostic!(Error,
+					$span.clone(),
+					$err
+				),
+				$($prop_name: $prop),+,
+				..PunybufError::default()
+			}
 		}
 	};
 	($span:expr, $err:expr) => {
 		PunybufError {
-			span: $span.clone(),
-			error: $err,
-			info: ErrorInfo::empty(),
+			before_error: vec![],
+			after_error: vec![],
+			display_error: true,
+			error: crate::errors::diagnostic!(Error,
+				$span.clone(),
+				$err
+			),
 		}
 	};
 }
@@ -209,18 +237,16 @@ pub(crate) use pb_err;
 #[macro_export]
 macro_rules! parser_err {
 	($span:expr, $string:literal, $($rpt:expr),+) => {
-		PunybufError {
-			span: $span.clone(),
-			error: format!($string, $($rpt),+),
-			info: ErrorInfo::empty(),
-		}
+		crate::errors::pb_err!(
+			$span.clone(),
+			format!($string, $($rpt),+)
+		)
 	};
 	($span:expr, $string:literal) => {
-		PunybufError {
-			span: $span.clone(),
-			error: format!($string),
-			info: ErrorInfo::empty(),
-		}
+		crate::errors::pb_err!(
+			$span.clone(),
+			format!($string)
+		)
 	};
 }
 

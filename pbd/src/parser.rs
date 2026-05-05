@@ -177,7 +177,7 @@ impl<'parser> Parser<'parser> {
 						return Err(pb_err!(
 							tk.span,
 							format!("documentation defined twice"),
-							ErrorInfo::custom(vec![
+							ErrorInfo::instead(vec![
 								diagnostic!(Info,
 									first_span.clone(),
 									format!("documentation defined here first")
@@ -326,7 +326,7 @@ impl<'parser> Parser<'parser> {
 													"expected either `{{ ... }}`, empty `()`, \
 													or an identifier, got {next}"
 												),
-												ErrorInfo::error_and(vec![
+												after_error: vec![
 													diagnostic!(
 														Tip,
 														Span::impossible(),
@@ -336,7 +336,7 @@ impl<'parser> Parser<'parser> {
 															before the parentheses"
 														)
 													)
-												])
+												]
 											));
 									}
 									CommandArgument::None
@@ -375,20 +375,20 @@ impl<'parser> Parser<'parser> {
 
 									match decl {
 										FlexibleDeclarationValue::StructDeclaration { .. } => {
-											return Err(PunybufError {
-												span: span.extend(&decl_span),
-												error: format!("all errors must be enums (or value-enums)"),
-												info: ErrorInfo::error_and(vec![
+											return Err(pb_err!(
+												span.extend(&decl_span),
+												format!("all errors must be enums (or value-enums)"),
+												after_error: vec![
 													diagnostic!(Tip,
-														decl_span,
+														decl_span.clone(),
 														format!(
 															"give a name to this struct and declare \
 															it inline as part of a value-enum, \
 															like `!(ErrorName {{ ... }})`"
 														)
 													)
-												])
-											});
+												]
+											));
 										}
 										_ => {}
 									}
@@ -555,10 +555,10 @@ impl<'parser> Parser<'parser> {
 					match next.data {
 						TokenData::Question => {
 							if let Some(before_inline_decl) = before_inline_decl {
-								return Err(PunybufError {
-									span: next.span.clone(),
-									error: "expected a `:` after the field name, got `?`".to_string(),
-									info: ErrorInfo::error_and(vec![
+								return Err(pb_err!(
+									next.span,
+									"expected a `:` after the field name, got `?`".to_string(),
+									after_error: vec![
 										diagnostic!(Tip,
 											before_inline_decl.clone(),
 											format!(
@@ -566,8 +566,8 @@ impl<'parser> Parser<'parser> {
 												put a dot (`.`) after this inline declaration's identifier"
 											)
 										)
-									])
-								});
+									]
+								));
 							} else {
 								return Err(parser_err!(
 									next.span, 
@@ -585,7 +585,7 @@ impl<'parser> Parser<'parser> {
 									next.span,
 									"generic parameters cannot be defined on the type of \
 									anonymous flags".to_string(),
-									ErrorInfo::error_and(vec![
+									after_error: vec![
 										diagnostic!(Tip,
 											Span::impossible(),
 											format!(
@@ -594,7 +594,7 @@ impl<'parser> Parser<'parser> {
 												field_name
 											)
 										)
-									])
+									]
 								));
 							} else {
 								return Err(parser_err!(
@@ -862,10 +862,10 @@ impl<'parser> Parser<'parser> {
 							refr = Some(Parser::parse_reference(&mut peekable, span, layer)?);
 							match peekable.peek() {
 								Some(Token { data: TokenData::Dot, span: dot_span }) => {
-									return Err(PunybufError {
-										span: token.span.clone(),
-										error: "flags (optional fields) cannot contain flag fields".to_string(),
-										info: ErrorInfo::error_and(vec![
+									return Err(pb_err!(
+										token.span,
+										"flags (optional fields) cannot contain flag fields".to_string(),
+										after_error: vec![
 											diagnostic!(Tip,
 												dot_span.clone(),
 												format!(
@@ -881,8 +881,8 @@ impl<'parser> Parser<'parser> {
 													type so that it contains a flag field"
 												)
 											),
-										])
-									});
+										]
+									));
 								}
 								_ => {}
 							}
@@ -949,12 +949,12 @@ impl<'parser> Parser<'parser> {
 										you cannot define generic parameters \
 										for inline declarations, such as `{name}`"
 									),
-									ErrorInfo::error_and(vec![
+									after_error: vec![
 										diagnostic!(Info,
 											span.clone(),
 											format!("generics for `{name}` defined here")
 										)
-									])
+									]
 								));
 							}
 							_ => {}

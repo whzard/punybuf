@@ -269,16 +269,15 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 		}
 	}
 	fn lex_error(&self, error: String) -> PunybufError {
-		PunybufError {
-			span: Span {
+		pb_err!(
+			Span {
 				loc_start: self.current_loc.clone(),
 				loc_end: Loc { row: self.current_loc.row, col: self.current_loc.col + 1 },
 				file_name: self.file_name.to_string(),
 				file_contents: self.contents.clone()
 			},
-			error,
-			info: ErrorInfo::empty()
-		}
+			error
+		)
 	}
 	fn lex_internal<Iter>(
 		&mut self, tokens: &mut Vec<Token>, peekable: &mut Peekable<Iter>, stop_on: Option<char>
