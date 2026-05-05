@@ -83,9 +83,11 @@
 
 use std::collections::HashMap;
 
-use crate::flattener::{
-	PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBTypeDef, PBTypeRef, PunybufDefinition,
-};
+use json::JsonValue;
+
+use crate::{flattener::{
+	PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBFieldFlag, PBTypeDef, PBTypeRef, PunybufDefinition
+}, lexer::Span};
 
 fn convert_attrs(attrs: &HashMap<String, Option<String>>) -> json::JsonValue {
 	let mut obj = json::JsonValue::new_object();
@@ -219,5 +221,204 @@ pub fn convert_full_definition(def: &PunybufDefinition) -> String {
 		includes_common: def.includes_common,
 		types: def.types.iter().map(convert_type).collect::<Vec<_>>(),
 		commands: def.commands.iter().map(convert_command).collect::<Vec<_>>(),
+	})
+}
+
+pub fn from_json(input: &str) -> Result<PunybufDefinition, String> {
+	let mut object = json::parse(input).map_err(|e| e.to_string())?;
+	let includes_common = object.remove("includes_common").as_bool().unwrap_or(false);
+	let mut object_types = object.remove("types");
+	let mut result = PunybufDefinition::new(includes_common);
+	for obj_typ in object_types.members_mut() {
+		result.types.push(type_from_json(obj_typ)?);
+	}
+	let mut object_commands = object.remove("commands");
+	for obj_cmd in object_commands.members_mut() {
+		result.commands.push(cmd_from_json(obj_cmd)?);
+	}
+	Ok(result)
+}
+
+fn type_from_json(obj_typ: &mut JsonValue) -> Result<PBTypeDef, String> {
+	match obj_typ.remove("is").as_str().unwrap_or("<nothing>") {
+		"struct" => {
+			Ok(PBTypeDef::Struct {
+				name: obj_typ.remove("name").to_string(),
+				name_span: Span::impossible(),
+				doc: obj_typ.remove("doc").to_string(),
+				layer: obj_typ.remove("layer").as_u32().unwrap_or(0),
+				attrs: attrs_from_json(&mut obj_typ.remove("attrs")),
+				generic_params: obj_typ.remove("generic_params").members().map(|v| {
+					v.to_string()
+				}).collect(),
+				generic_span: Span::impossible(),
+				fields: fields_from_json(&mut obj_typ.remove("fields"))?,
+				inline_owner: obj_typ.remove("inline_owner").as_str()
+					.map(|x| (x.to_string(), Span::impossible())),
+				is_highest_layer: obj_typ.remove("is_highest_owner").as_bool().unwrap_or(false)
+			})
+		}
+		"enum" => {
+			Ok(PBTypeDef::Enum {
+				name: obj_typ.remove("name").to_string(),
+				name_span: Span::impossible(),
+				doc: obj_typ.remove("doc").to_string(),
+				layer: obj_typ.remove("layer").as_u32().unwrap_or(0),
+				attrs: attrs_from_json(&mut obj_typ.remove("attrs")),
+				generic_params: obj_typ.remove("generic_params").members().map(|v| {
+					v.to_string()
+				}).collect(),
+				generic_span: Span::impossible(),
+				variants: variants_from_json(&mut obj_typ.remove("variants"))?,
+				inline_owner: obj_typ.remove("inline_owner").as_str()
+					.map(|x| (x.to_string(), Span::impossible())),
+				is_highest_layer: obj_typ.remove("is_highest_owner").as_bool().unwrap_or(false)
+			})
+		}
+		"alias" => {
+			Ok(PBTypeDef::Alias {
+				name: obj_typ.remove("name").to_string(),
+				name_span: Span::impossible(),
+				doc: obj_typ.remove("doc").to_string(),
+				layer: obj_typ.remove("layer").as_u32().unwrap_or(0),
+				attrs: attrs_from_json(&mut obj_typ.remove("attrs")),
+				generic_params: obj_typ.remove("generic_params").members().map(|v| {
+					v.to_string()
+				}).collect(),
+				generic_span: Span::impossible(),
+				alias: ref_from_json(&mut obj_typ.remove("alias"))?,
+				is_highest_layer: obj_typ.remove("is_highest_owner").as_bool().unwrap_or(false)
+			})
+		}
+		_ => {
+			Err("invalid `is` value".into())
+		}
+	}
+}
+
+fn cmd_from_json(obj_cmd: &mut JsonValue) -> Result<PBCommandDef, String> {
+	Ok(PBCommandDef {
+		name: obj_cmd.remove("name").to_string(),
+		name_span: Span::impossible(),
+		argument: arg_from_json(&mut obj_cmd.remove("argument"))?,
+		argument_span: Span::impossible(),
+		attrs: attrs_from_json(&mut obj_cmd.remove("attrs")),
+		doc: obj_cmd.remove("doc").to_string(),
+		layer: obj_cmd.remove("layer").as_u32().unwrap_or(0),
+		command_id: obj_cmd.remove("id").as_u32().ok_or("invalid command id")?,
+		ret: ref_from_json(&mut obj_cmd.remove("ret"))?,
+		err: variants_from_json(&mut obj_cmd.remove("err"))?,
+		err_span: Span::impossible(),
+		is_highest_layer: obj_cmd.remove("is_highest_layer").as_bool().unwrap_or(false)
+	})
+}
+
+fn arg_from_json(obj_arg: &mut JsonValue) -> Result<PBCommandArg, String> {
+	if obj_arg.is_null() {
+		return Ok(PBCommandArg::None);
+	}
+	match obj_arg.remove("is").as_str().unwrap_or("<unknown>") {
+		"ref" => {
+			Ok(PBCommandArg::Ref(ref_from_json(&mut obj_arg.remove("ref"))?))
+		}
+		"struct" => {
+			Ok(PBCommandArg::Struct {
+				fields: fields_from_json(&mut obj_arg.remove("fields"))?
+			})
+		}
+		_ => {
+			Err("invalid `is` value in a command".into())
+		}
+	}
+}
+
+fn attrs_from_json(obj_attrs: &mut JsonValue) -> HashMap<String, Option<String>> {
+	let mut result = HashMap::new();
+	for (name, val) in obj_attrs.entries() {
+		result.insert(
+			name.into(),
+			if let Some(v) = val.as_str() { Some(v.into()) } else { None }
+		);
+	}
+	result
+}
+
+fn fields_from_json(obj_fields: &mut JsonValue) -> Result<Vec<PBField>, String> {
+	let mut fields = vec![];
+	for obj_field in obj_fields.members_mut() {
+		fields.push(PBField {
+			name: obj_field.remove("name").to_string(),
+			name_span: Span::impossible(),
+			value: ref_from_json(&mut obj_field.remove("value"))?,
+			flags: flags_from_json(&mut obj_field.remove("flags"))?,
+			attrs: attrs_from_json(&mut obj_field.remove("attrs")),
+			doc: obj_field.remove("doc").to_string()
+		});
+	}
+	Ok(fields)
+}
+
+fn flags_from_json(obj_flags: &mut JsonValue) -> Result<Option<Vec<PBFieldFlag>>, String> {
+	if obj_flags.is_null() {
+		return Ok(None);
+	}
+	let mut flags = vec![];
+	for obj_flag in obj_flags.members_mut() {
+		flags.push(PBFieldFlag {
+			name: obj_flag.remove("name").to_string(),
+			name_span: Span::impossible(),
+			value: if let mut val = obj_flag.remove("value") && !val.is_null() {
+				Some(ref_from_json(&mut val)?)
+			} else {
+				None
+			},
+			attrs: attrs_from_json(&mut obj_flag.remove("attrs")),
+			doc: obj_flag.remove("doc").to_string()
+		});
+	}
+	Ok(Some(flags))
+}
+
+fn variants_from_json(obj_variants: &mut JsonValue) -> Result<Vec<PBEnumVariant>, String> {
+	let mut variants = vec![];
+	for obj_var in obj_variants.members_mut() {
+		variants.push(PBEnumVariant {
+			name: obj_var.remove("name").to_string(),
+			name_span: Span::impossible(),
+			discriminant: obj_var.remove("discriminant").as_u8().ok_or("invalid discriminant")?,
+			value: if let mut val = obj_var.remove("value") && !val.is_null() {
+				Some(ref_from_json(&mut val)?)
+			} else {
+				None
+			},
+			attrs: attrs_from_json(&mut obj_var.remove("attrs")),
+			doc: obj_var.remove("doc").to_string()
+		});
+	}
+	Ok(variants)
+}
+
+fn ref_from_json(obj_ref: &mut JsonValue) -> Result<PBTypeRef, String> {
+	// Ref = [name: string, layer: number | null, generic_params: Ref[], is_highest_layer: boolean]
+	let mut iter = obj_ref.members_mut();
+	let name = iter.next().ok_or("invalid reference: no name")?.to_string();
+	let layer = iter.next().ok_or("invalid reference: no layer")?.as_u32()
+		.ok_or("invalid reference: incorrect layer")?;
+	let obj_generic_params = iter.next().ok_or("invalid reference: no generic_params")?;
+	let mut generic_params = vec![];
+	for obj_ref in obj_generic_params.members_mut() {
+		generic_params.push(ref_from_json(obj_ref)?);
+	}
+	let is_highest_layer = iter.next().ok_or("invalid reference: no is_highest_layer")?
+		.as_bool().unwrap_or(false);
+	Ok(PBTypeRef {
+		reference: name,
+		reference_span: Span::impossible(),
+		generics: generic_params,
+		generic_span: Span::impossible(),
+		resolved_layer: Some(layer),
+		is_highest_layer,
+		// TODO: currently not included in json
+		is_global: true,
 	})
 }
