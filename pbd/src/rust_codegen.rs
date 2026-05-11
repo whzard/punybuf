@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::flattener::{
 	PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBTypeDef, PBTypeRef, PunybufDefinition,
 };
@@ -44,11 +46,13 @@ pub trait HashMapConvertible<K, V>: Sized {
 }
 "#;
 
-pub struct RustCodegen {
+pub struct RustCodegen<'def> {
 	use_tokio: bool,
 	uses_common: bool,
 	gen_docs: bool,
 	buffer: String,
+	def: &'def PunybufDefinition,
+	lifetime: &'static str,
 }
 
 macro_rules! appendf {
@@ -60,14 +64,145 @@ macro_rules! appendf {
 	};
 }
 
-impl RustCodegen {
-	pub fn new(use_tokio: bool, gen_docs: bool) -> Self {
+fn deserialize_suffix(stream: bool) -> &'static str {
+	if stream {
+		"_stream"
+	} else {
+		""
+	}
+}
+
+impl<'def> RustCodegen<'def> {
+	pub fn new(use_tokio: bool, gen_docs: bool, def: &'def PunybufDefinition) -> Self {
 		Self {
 			use_tokio,
 			uses_common: true,
 			gen_docs,
 			buffer: String::new(),
+			def,
+			lifetime: "'x"
 		}
+	}
+	fn gen_lifetime_generics_if(&self, condition: bool) -> String {
+		if condition {
+			format!("<{}>", self.lifetime)
+		} else {
+			"".into()
+		}
+	}
+	fn gen_lifetime_if(&self, condition: bool, comma: bool) -> String {
+		if condition && comma {
+			format!("{}, ", self.lifetime)
+		} else if condition {
+			format!("{}", self.lifetime)
+		} else {
+			"".into()
+		}
+	}
+	fn needs_lifetime_with_context(
+		&self, name: &str, layer: u32,
+		path: &mut HashSet<(String, u32)>
+	) -> bool {
+		if !path.insert((name.into(), layer)) {
+			return false;
+		};
+
+		let typdef = self.def.types.iter().find(|t| {
+			t.get_name().0 == name &&
+			t.get_layer() == &layer
+		}).expect("bad state: unknown type referenced");
+		if typdef.get_attrs().contains_key("@rust:needs_lifetime") {
+			return true;
+		}
+		match typdef {
+			PBTypeDef::Struct { fields, .. } => {
+				for field in fields {
+					if !field.value.is_global {
+						continue;
+					}
+					let path_elem = (field.value.reference.clone(), field.value.resolved_layer.expect(
+						&format!("layer of {} not resolved", field.name)
+					));
+					if path.contains(&path_elem) {
+						continue;
+					}
+					let result = self.needs_lifetime_with_context(
+						&field.value.reference,
+						field.value.resolved_layer.expect("bad state: layer not resolved"),
+						path
+					);
+					path.remove(&path_elem);
+					if result { return true }
+					let Some(flags) = &field.flags else { continue };
+					for flag in flags {
+						let Some(value) = &flag.value else { continue };
+						if !value.is_global {
+							continue;
+						}
+						let path_elem = (value.reference.clone(), value.resolved_layer.unwrap());
+						if path.contains(&path_elem) {
+							continue;
+						}
+						let result = self.needs_lifetime_with_context(
+							&value.reference,
+							value.resolved_layer.expect("bad state: layer not resolved"),
+							path
+						);
+						path.remove(&path_elem);
+						if result { return true }
+					}
+				}
+			}
+			PBTypeDef::Enum { variants, .. } => {
+				for variant in variants {
+					let Some(value) = &variant.value else { continue };
+					if !value.is_global {
+						continue;
+					}
+					let path_elem = (value.reference.clone(), value.resolved_layer.unwrap());
+					if path.contains(&path_elem) {
+						continue;
+					}
+					let result = self.needs_lifetime_with_context(
+						&value.reference,
+						value.resolved_layer.expect("bad state: layer not resolved"),
+						path
+					);
+					path.remove(&path_elem);
+					if result { return true }
+				}
+			}
+			PBTypeDef::Alias { alias, .. } => {
+				if !alias.is_global {
+					return false;
+				}
+				let path_elem = (alias.reference.clone(), alias.resolved_layer.unwrap());
+				if path.contains(&path_elem) {
+					return false;
+				}
+				let result = self.needs_lifetime_with_context(
+					&alias.reference,
+					alias.resolved_layer.expect("bad state: layer not resolved"),
+					path
+				);
+				path.remove(&path_elem);
+				return result;
+			}
+		}
+		false
+	}
+	fn needs_lifetime_ref(&self, refr: &PBTypeRef) -> bool {
+		if refr.reference == "Void" || !refr.is_global {
+			return false
+		}
+		self.needs_lifetime(
+			&refr.reference,
+			refr.resolved_layer.expect(&format!("bad state: layer of {} not resolved", refr.reference))
+		)
+	}
+	fn needs_lifetime(&self, name: &str, layer: u32) -> bool {
+		let mut path = HashSet::new();
+		self.needs_lifetime_with_context(name, layer, &mut path)
 	}
 	fn get_fn(&self) -> &str {
 		if self.use_tokio {
@@ -124,9 +259,21 @@ impl RustCodegen {
 				s @ (
 					"U8" | "U16" | "U32" | "U64" | "I32" | "I64" | "F32" | "F64"
 				) => return s.to_ascii_lowercase(),
-				s @ (
-					"String" | "Bytes" | "UInt"
-				) => return s.to_string(),
+				s @ "UInt" => return s.to_string(),
+				"Bytes" => {
+					return if turbofish {
+						"Bytes::<'x>".to_string()
+					} else {
+						"Bytes<'x>".to_string()
+					};
+				}
+				"String" => {
+					return if turbofish {
+						"Cow::<'x, str>".to_string()
+					} else {
+						"Cow<'x, str>".to_string()
+					};
+				}
 				_ => {}
 			}
 		}
@@ -137,7 +284,8 @@ impl RustCodegen {
 		} else {
 			format!("{}Layer{}", refr.reference, refr.resolved_layer.unwrap())
 		};
-		if refr.generics.is_empty() {
+		let needs_lifetime = self.needs_lifetime_ref(refr);
+		if refr.generics.is_empty() && !needs_lifetime {
 			return result;
 		}
 
@@ -146,6 +294,8 @@ impl RustCodegen {
 		} else {
 			result.push('<');
 		}
+
+		result.push_str(&self.gen_lifetime_if(needs_lifetime, !refr.generics.is_empty()));
 
 		for (i, generics) in refr.generics.iter().enumerate() {
 			if i != 0 {
@@ -163,15 +313,27 @@ impl RustCodegen {
 			format!("{}Layer{}", cmd.name, cmd.layer)
 		}
 	}
+	fn gen_command_name(&self, cmd: &PBCommandDef) -> String {
+		let needs_lifetime = self.command_needs_lifetime(cmd);
+		if cmd.is_highest_layer && !needs_lifetime {
+			cmd.name.clone()
+		} else if cmd.is_highest_layer {
+			format!("{}<'x>", cmd.name)
+		} else {
+			format!("{}Layer{}{}", cmd.name, cmd.layer, self.gen_lifetime_generics_if(needs_lifetime))
+		}
+	}
 	fn get_type_name(&self, tp: &PBTypeDef) -> String {
 		let mut result = if tp.is_highest_layer() {
 			tp.get_name().0.to_string()
 		} else {
 			format!("{}Layer{}", tp.get_name().0, tp.get_layer())
 		};
-		if !tp.get_generics().0.is_empty() {
+		let needs_lifetime = self.needs_lifetime(tp.get_name().0, *tp.get_layer());
+		if !tp.get_generics().0.is_empty() || needs_lifetime {
 			let generics = tp.get_generics().0;
 			result.push('<');
+			result.push_str(&self.gen_lifetime_if(needs_lifetime, !generics.is_empty()));
 			for (i, g) in generics.iter().enumerate() {
 				if i != 0 {
 					result.push_str(", ");
@@ -183,20 +345,35 @@ impl RustCodegen {
 		result
 	}
 	fn get_type_impl_generics(&self, tp: &PBTypeDef) -> String {
+		// we always need the lifetime here whether or not
+		// the actual type needs it, since
+		// we're referencing PBType and it always needs a
+		// lifetime
+		// let needs_lifetime = self.needs_lifetime(tp.get_name().0, *tp.get_layer());
 		if tp.get_generics().0.is_empty() {
-			"".to_string()
+			self.gen_lifetime_generics_if(true)
 		} else {
 			let mut result = String::new();
 			let generics = tp.get_generics().0;
 			result.push('<');
+			result.push_str(&self.gen_lifetime_if(true, !generics.is_empty()));
 			for (i, g) in generics.iter().enumerate() {
 				if i != 0 {
 					result.push_str(", ");
 				}
-				result.push_str(&format!("{}: PBType", g));
+				result.push_str(&format!("{}: PBType<'x>", g));
 			}
 			result.push('>');
 			result
+		}
+	}
+	fn gen_command_err(&self, cmd: &PBCommandDef) -> String {
+		// All command errors have an `UnexpectedError(Cow<'x, str>)` variant,
+		// so all of them need a lifetime
+		if cmd.is_highest_layer {
+			format!("{}Error{}", cmd.name, self.gen_lifetime_generics_if(true))
+		} else {
+			format!("{}Layer{}Error{}", cmd.name, cmd.layer, self.gen_lifetime_generics_if(true))
 		}
 	}
 	fn get_command_err(&self, cmd: &PBCommandDef) -> String {
@@ -213,22 +390,46 @@ impl RustCodegen {
 			""
 		}
 	}
-	fn gen_command_enums(&mut self, def: &PunybufDefinition) {
+	fn command_needs_lifetime(&self, cmd: &PBCommandDef) -> bool {
+		match &cmd.argument {
+			PBCommandArg::None => false,
+			PBCommandArg::Ref(refr) => self.needs_lifetime_ref(&refr),
+			PBCommandArg::Struct { fields } => {
+				fields.iter().any(|f| {
+					self.needs_lifetime_ref(&f.value) ||
+					f.flags.as_ref().is_some_and(|flags| {
+						flags.iter().any(|flag| {
+							flag.value.as_ref().is_some_and(|v|
+								self.needs_lifetime_ref(v)
+							)
+						})
+					})
+				})
+			},
+		}
+	}
+	fn gen_command_enums(&mut self) {
 		appendf!(self, "/// This enum contains all possible commands in the RPC definition.\n");
 		appendf!(self, "#[derive(Debug, Clone)]\n");
-		appendf!(self, "pub enum Command {{\n");
-		for cmd in &def.commands {
+		let need_generics = self.def.commands.iter().any(|cmd| {
+			self.command_needs_lifetime(cmd)
+		});
+		appendf!(self, "pub enum Command{} {{\n", self.gen_lifetime_generics_if(need_generics));
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
-			appendf!(self, "    {}({}),\n", self.get_command_name(cmd), self.get_command_name(cmd));
+			appendf!(self, "    {}({}),\n", self.get_command_name(cmd), self.gen_command_name(cmd));
 		}
 		appendf!(self, "}}\n"); // enum Command
 
-		appendf!(self, "impl PBCommand for Command {{\n");
+		appendf!(self, "impl{} PBCommand for Command{} {{\n",
+			self.gen_lifetime_generics_if(need_generics),
+			self.gen_lifetime_generics_if(need_generics)
+		);
 		appendf!(self, "    fn id(&self) -> u32 {{\n");
 		appendf!(self, "        match self {{\n");
-		for cmd in &def.commands {
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
@@ -239,7 +440,7 @@ impl RustCodegen {
 
 		appendf!(self, "    fn is_void(&self) -> bool {{\n");
 		appendf!(self, "        match self {{\n");
-		for cmd in &def.commands {
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
@@ -250,7 +451,7 @@ impl RustCodegen {
 
 		appendf!(self, "    fn attributes(&self) -> &'static [(&'static str, Option<&'static str>)] {{\n");
 		appendf!(self, "        match self {{\n");
-		for cmd in &def.commands {
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
@@ -261,7 +462,7 @@ impl RustCodegen {
 
 		appendf!(self, "    fn required_capability(&self) -> Option<&'static str> {{\n");
 		appendf!(self, "        match self {{\n");
-		for cmd in &def.commands {
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
@@ -272,7 +473,7 @@ impl RustCodegen {
 
 		appendf!(self, "    {} serialize_self<R: {}>(&self, r: &mut R) -> Result<(), io::Error> {{\n", self.get_fn(), self.write());
 		appendf!(self, "        match self {{\n");
-		for cmd in &def.commands {
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
@@ -282,33 +483,61 @@ impl RustCodegen {
 		appendf!(self, "    }}\n"); // fn serialize_self()
 		appendf!(self, "}}\n\n"); // impl PBCommand
 	
-		appendf!(self, "impl Command {{\n\n"); // impl Command
+		appendf!(self, "impl{} Command{} {{\n\n",
+			self.gen_lifetime_generics_if(need_generics),
+			self.gen_lifetime_generics_if(need_generics)
+		); // impl Command
 		appendf!(self, "    /// Reads both the ID of the command and its value\n");
-		appendf!(self, "    pub {} deserialize<R: {}>(r: &mut R) -> Result<Self, io::Error> {{\n", self.get_fn(), self.read());
+		appendf!(self, "    pub {} deserialize_stream<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 		appendf!(self, "        let mut id = [0; 4];\n");
 		appendf!(self, "        r.{};\n", self.read_exact("&mut id"));
 		appendf!(self, "        let id = u32::from_be_bytes(id);\n");
 		appendf!(self, "        Ok(match id {{\n");
-		for cmd in &def.commands {
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
 			appendf!(self,
-				"            {} => Self::{}({}::deserialize(r){}?),\n",
+				"            {} => Self::{}({}::deserialize_stream(r){}?),\n",
 				cmd.command_id, self.get_command_name(cmd), self.get_command_name(cmd), self.maybe_await()
 			);
 		}
 		appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
 		appendf!(self, "\n");
 		appendf!(self, "        }})\n"); // match
-		appendf!(self, "    }}\n"); // fn deserialize()
+		appendf!(self, "    }}\n"); // fn deserialize_stream
+		if !self.use_tokio {
+			appendf!(self, "    pub fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+			appendf!(self, "        let (a, b) = r.split_at_checked(4)\n");
+			appendf!(self, "            .ok_or(io::Error::new(io::ErrorKind::UnexpectedEof, \"buffer too small\"))?;\n");
+			appendf!(self, "        let arr = a.try_into().unwrap(); // has to be 4 bytes\n");
+			appendf!(self, "        let id = u32::from_be_bytes(arr);\n");
+			appendf!(self, "        *r = b;\n");
+			appendf!(self, "        Ok(match id {{\n");
+			for cmd in &self.def.commands {
+				if cmd.attrs.contains_key("@rust:ignore") {
+					continue;
+				}
+				appendf!(self,
+					"            {} => Self::{}({}::deserialize_stream(r){}?),\n",
+					cmd.command_id, self.get_command_name(cmd), self.get_command_name(cmd), self.maybe_await()
+				);
+			}
+			appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
+			appendf!(self, "\n");
+			appendf!(self, "        }})\n"); // match
+			appendf!(self, "    }}\n"); // fn deserialize_stream
+		}
 		appendf!(self, "}}\n\n"); // impl Command
 
 
+		let ret_needs_lifetime = self.def.commands.iter().any(|cmd| {
+			self.needs_lifetime_ref(&cmd.ret)
+		});
 		appendf!(self, "/// This enum contains all possible command return types in the RPC definition.\n");
 		appendf!(self, "#[derive(Debug, Clone)]\n");
-		appendf!(self, "pub enum CommandReturn {{\n");
-		for cmd in &def.commands {
+		appendf!(self, "pub enum CommandReturn{} {{\n", self.gen_lifetime_generics_if(ret_needs_lifetime));
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
@@ -317,11 +546,14 @@ impl RustCodegen {
 		appendf!(self, "}}\n"); // enum CommandReturn
 
 
-		appendf!(self, "impl CommandReturn {{\n");
+		appendf!(self, "impl{} CommandReturn{} {{\n",
+			self.gen_lifetime_generics_if(ret_needs_lifetime),
+			self.gen_lifetime_generics_if(ret_needs_lifetime)
+		);
 
 		appendf!(self, "    pub {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
 		appendf!(self, "        match self {{\n");
-		for cmd in &def.commands {
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
@@ -334,38 +566,41 @@ impl RustCodegen {
 		appendf!(self, "        Ok(())\n");
 		appendf!(self, "    }}\n"); // fn serialize
 
-		appendf!(self, "    pub {} deserialize_return<R: {}>(id: u32, r: &mut R) -> Result<Self, io::Error> {{\n", self.get_fn(), self.read());
+		appendf!(self, "    pub {} deserialize_return_stream<R: {}>(id: u32, r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 		appendf!(self, "        Ok(match id {{\n");
-		for cmd in &def.commands {
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
 			appendf!(self,
-				"            {} => Self::{}({}::deserialize(r){}?),\n",
+				"            {} => Self::{}({}::deserialize_stream(r){}?),\n",
 				cmd.command_id, self.get_command_name(cmd), self.gen_reference(&cmd.ret, true), self.maybe_await()
 			);
 		}
 		appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
 		appendf!(self, "\n");
 		appendf!(self, "        }})\n"); // match
-		appendf!(self, "    }}\n"); // fn deserialize_return()
+		appendf!(self, "    }}\n"); // fn deserialize_return_stream
 		appendf!(self, "}}\n\n"); // impl CommandReturn
 
 		appendf!(self, "/// This enum contains all possible command error types in the RPC definition.\n");
 		appendf!(self, "#[derive(Debug, Clone)]\n");
-		appendf!(self, "pub enum CommandError {{\n");
-		for cmd in &def.commands {
+		appendf!(self, "pub enum CommandError{} {{\n", self.gen_lifetime_generics_if(true));
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
-			appendf!(self, "    {}({}),\n", self.get_command_name(cmd), self.get_command_err(cmd));
+			appendf!(self, "    {}({}),\n", self.get_command_name(cmd), self.gen_command_err(cmd));
 		}
 		appendf!(self, "}}\n"); // enum CommandError
 
-		appendf!(self, "impl CommandError {{\n");
+		appendf!(self, "impl{} CommandError{} {{\n",
+			self.gen_lifetime_generics_if(true),
+			self.gen_lifetime_generics_if(true)
+		);
 		appendf!(self, "    pub {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
 		appendf!(self, "        match self {{\n");
-		for cmd in &def.commands {
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
@@ -378,21 +613,21 @@ impl RustCodegen {
 		appendf!(self, "        Ok(())\n");
 		appendf!(self, "    }}\n"); // fn serialize
 
-		appendf!(self, "    pub {} deserialize_error<R: {}>(id: u32, r: &mut R) -> Result<Self, io::Error> {{\n", self.get_fn(), self.read());
+		appendf!(self, "    pub {} deserialize_error_stream<R: {}>(id: u32, r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 		appendf!(self, "        Ok(match id {{\n");
-		for cmd in &def.commands {
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
 			appendf!(self,
-				"            {} => Self::{}({}::deserialize(r){}?),\n",
+				"            {} => Self::{}({}::deserialize_stream(r){}?),\n",
 				cmd.command_id, self.get_command_name(cmd), self.get_command_err(cmd), self.maybe_await()
 			);
 		}
 		appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
 		appendf!(self, "\n");
 		appendf!(self, "        }})\n"); // match
-		appendf!(self, "    }}\n"); // fn deserialize_error()
+		appendf!(self, "    }}\n"); // fn deserialize_error_stream
 		appendf!(self, "}}\n\n"); // impl CommandError
 	}
 	fn gen_fields(&mut self, fields: &Vec<PBField>) {
@@ -527,10 +762,11 @@ impl RustCodegen {
 			appendf!(self, "        UInt(0).serialize(w){}?;\n", self.maybe_await());
 		}
 	}
-	fn gen_deserialize_fields(&mut self, fields: &Vec<PBField>, extensible: bool) {
+	fn gen_deserialize_fields(&mut self, fields: &Vec<PBField>, extensible: bool, stream: bool) {
+		let stream = deserialize_suffix(stream);
 		for field in fields {
 			if field.attrs.contains_key("@extension_flags") { continue }
-			appendf!(self, "        let field_{} = {}::deserialize(r){}?;\n",
+			appendf!(self, "        let field_{} = {}::deserialize{stream}(r){}?;\n",
 				field.name, self.gen_reference(&field.value, true),
 				self.maybe_await()
 			);
@@ -545,7 +781,7 @@ impl RustCodegen {
 							flag.name, field.name
 						);
 						appendf!(self,
-							"            Some({}::deserialize(r){}?)\n",
+							"            Some({}::deserialize{stream}(r){}?)\n",
 							self.gen_reference(val, true), self.maybe_await()
 						);
 						appendf!(self,
@@ -561,7 +797,7 @@ impl RustCodegen {
 			}
 		}
 		if extensible {
-			appendf!(self, "        let mut _extension_bytes = Bytes::deserialize(r){}?;\n", self.maybe_await());
+			appendf!(self, "        let mut _extension_bytes = Bytes::deserialize{stream}(r){}?;\n", self.maybe_await());
 			appendf!(self, "        let _extension_reader = &mut &_extension_bytes.0[..];\n");
 			for field in fields {
 				let Some(flags) = &field.flags else { continue };
@@ -577,7 +813,7 @@ impl RustCodegen {
 							flag.name, field.name
 						);
 						appendf!(self,
-							"            Some({}::deserialize(_extension_reader){}?)\n",
+							"            Some({}::deserialize{stream}(_extension_reader){}?)\n",
 							self.gen_reference(val, true), self.maybe_await()
 						);
 						appendf!(self,
@@ -596,7 +832,7 @@ impl RustCodegen {
 			if let Some(extension_flags_field) = fields.iter()
 				.find(|f| f.attrs.contains_key("@extension_flags"))
 			{
-				appendf!(self, "        let field_{} = {}::deserialize(_extension_reader){}?;\n",
+				appendf!(self, "        let field_{} = {}::deserialize{stream}(_extension_reader){}?;\n",
 					extension_flags_field.name, self.gen_reference(&extension_flags_field.value, true),
 					self.maybe_await()
 				);
@@ -609,7 +845,7 @@ impl RustCodegen {
 							"        let flag_{} = if (field_{} & (1 << {i})) != 0 {{\n",
 							flag.name, extension_flags_field.name);
 						appendf!(self,
-							"            Some({}::deserialize(_extension_reader){}?)\n",
+							"            Some({}::deserialize{stream}(_extension_reader){}?)\n",
 							self.gen_reference(val, true), self.maybe_await());
 						appendf!(self,
 							"        }} else {{ None }};\n");
@@ -663,7 +899,8 @@ impl RustCodegen {
 			appendf!(self, "            }}\n");
 		}
 	}
-	fn gen_deserialize_variants(&mut self, variants: &Vec<PBEnumVariant>) {
+	fn gen_deserialize_variants(&mut self, variants: &Vec<PBEnumVariant>, stream: bool) {
+		let stream = deserialize_suffix(stream);
 		let mut default_variant = None;
 		for variant in variants {
 			if variant.attrs.contains_key("@default") {
@@ -671,10 +908,10 @@ impl RustCodegen {
 			}
 			appendf!(self, "            {} => {{\n", variant.discriminant);
 			if variant.attrs.contains_key("@extension") {
-				appendf!(self, "                _ = UInt::deserialize(r);\n");
+				appendf!(self, "                _ = UInt::deserialize{stream}(r);\n");
 			}
 			if let Some(refr) = &variant.value {
-				appendf!(self, "                Self::{}({}::deserialize(r){}?)\n", variant.name, self.gen_reference(refr, true), self.maybe_await());
+				appendf!(self, "                Self::{}({}::deserialize{stream}(r){}?)\n", variant.name, self.gen_reference(refr, true), self.maybe_await());
 			} else {
 				appendf!(self, "                Self::{}\n", variant.name);
 			}
@@ -682,7 +919,7 @@ impl RustCodegen {
 		}
 		if let Some(default_variant) = default_variant {
 			appendf!(self, "            _ => {{\n");
-			appendf!(self, "                _ = Bytes::deserialize(r){}?;\n", self.maybe_await());
+			appendf!(self, "                _ = Bytes::deserialize{stream}(r){}?;\n", self.maybe_await());
 			appendf!(self, "                Self::{}\n", default_variant.name);
 			appendf!(self, "            }}\n");
 		} else {
@@ -700,14 +937,15 @@ impl RustCodegen {
 			appendf!(self, "/// {}\n", line);
 		}
 	}
-	fn gen_commands(&mut self, def: &PunybufDefinition) {
-		for cmd in &def.commands {
+	fn gen_commands(&mut self) {
+		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
 			self.gen_doc(&cmd.doc, 0);
 			appendf!(self, "#[derive(Debug, Clone)]\n");
-			appendf!(self, "pub struct {}", self.get_command_name(cmd));
+			let cmd_needs_lifetime = self.command_needs_lifetime(cmd);
+			appendf!(self, "pub struct {}", self.gen_command_name(cmd));
 			match &cmd.argument {
 				PBCommandArg::None => {
 					appendf!(self, ";\n")
@@ -725,10 +963,13 @@ impl RustCodegen {
 					}
 				}
 			}
-			appendf!(self, "impl PBCommandExt for {} {{\n", self.get_command_name(cmd));
-			appendf!(self, "    type Error = {};\n", self.get_command_err(cmd));
-			appendf!(self, "    type Return = {};\n", self.gen_reference(&cmd.ret, false));
-			appendf!(self, "    const MIN_SIZE: usize = 0; // TODO\n");
+			appendf!(self, "impl<'x> PBCommandExt<'x> for {} {{\n",
+				self.gen_command_name(cmd)
+			);
+			self.lifetime = "'a";
+			appendf!(self, "    type Error<'a> = {};\n", self.gen_command_err(cmd));
+			appendf!(self, "    type Return<'a> = {};\n", self.gen_reference(&cmd.ret, false));
+			self.lifetime = "'x";
 			appendf!(self, "    const ID: u32 = {};\n", cmd.command_id);
 			if cmd.ret.reference == "Void" {
 				appendf!(self, "    const IS_VOID: bool = true;\n");
@@ -743,20 +984,36 @@ impl RustCodegen {
 			if let Some(Some(cap)) = cmd.attrs.get("@capability") {
 				appendf!(self, "    const REQUIRED_CAPABILITY: Option<&'static str> = Some(&{cap:?});\n");
 			}
-			appendf!(self, "    {} deserialize<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
+			appendf!(self, "    {} deserialize_stream<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 			match &cmd.argument {
 				PBCommandArg::None => {
 					appendf!(self, "        Ok(Self)\n");
 				},
 				PBCommandArg::Ref(refr) => {
-					appendf!(self, "        Self({}::deserialize(r){}?)\n", self.gen_reference(refr, true), self.maybe_await());
+					appendf!(self, "        Self({}::deserialize_stream(r){}?)\n", self.gen_reference(refr, true), self.maybe_await());
 				},
-				PBCommandArg::Struct { fields } => self.gen_deserialize_fields(fields, !cmd.attrs.contains_key("@sealed")),
+				PBCommandArg::Struct { fields } => self.gen_deserialize_fields(fields, !cmd.attrs.contains_key("@sealed"), true),
 			}
-			appendf!(self, "    }}\n"); // deserialize
+			appendf!(self, "    }}\n"); // fn deserialize_stream
+			if !self.use_tokio {
+				appendf!(self, "    fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+				match &cmd.argument {
+					PBCommandArg::None => {
+						appendf!(self, "        Ok(Self)\n");
+					},
+					PBCommandArg::Ref(refr) => {
+						appendf!(self, "        Self({}::deserialize(r)?)\n", self.gen_reference(refr, true));
+					},
+					PBCommandArg::Struct { fields } => self.gen_deserialize_fields(fields, !cmd.attrs.contains_key("@sealed"), false),
+				}
+				appendf!(self, "    }}\n"); // fn deserialize
+			}
 			appendf!(self, "}}\n"); // impl PBCommandExt
 
-			appendf!(self, "impl PBCommand for {} {{\n", self.get_command_name(cmd));
+			appendf!(self, "impl{} PBCommand for {} {{\n",
+				self.gen_lifetime_generics_if(cmd_needs_lifetime),
+				self.gen_command_name(cmd)
+			);
 			appendf!(self, "    fn id(&self) -> u32 {{ {} }}\n", cmd.command_id);
 			if cmd.ret.reference == "Void" {
 				appendf!(self, "    fn is_void(&self) -> bool {{ true }}\n");
@@ -784,12 +1041,14 @@ impl RustCodegen {
 			appendf!(self, "}}\n\n"); // impl PBCommand
 
 			appendf!(self, "#[derive(Debug, Clone)]\n");
-			appendf!(self, "pub enum {} {{\n", self.get_command_err(cmd));
-			appendf!(self, "    UnexpectedError(String),\n");
+			appendf!(self, "pub enum {} {{\n", self.gen_command_err(cmd));
+			// Since we have this, all error enums need a lifetime
+			appendf!(self, "    UnexpectedError(Cow<'x, str>),\n");
 			self.gen_variants(&cmd.err);
 			appendf!(self, "}}\n"); // enum
-			appendf!(self, "impl PBType for {} {{\n", self.get_command_err(cmd));
-			appendf!(self, "    const MIN_SIZE: usize = 0; // TODO\n");
+			appendf!(self, "impl<'x> PBType<'x> for {} {{\n",
+				self.gen_command_err(cmd)
+			);
 			appendf!(self, "    {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
 			appendf!(self, "        match self {{\n");
 			appendf!(self, "            Self::UnexpectedError(x) => {{ 0u8.serialize(w){}?; x.serialize(w){}?; }}\n", self.maybe_await(), self.maybe_await());
@@ -797,19 +1056,28 @@ impl RustCodegen {
 			appendf!(self, "        }}\n"); // match
 			appendf!(self, "        Ok(())\n");
 			appendf!(self, "    }}\n"); // fn serialize
-			appendf!(self, "    {} deserialize<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
-			appendf!(self, "        let discriminant = u8::deserialize(r){}?;\n", self.maybe_await());
+			appendf!(self, "    {} deserialize_stream<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
+			appendf!(self, "        let discriminant = u8::deserialize_stream(r){}?;\n", self.maybe_await());
 			appendf!(self, "        Ok(match discriminant {{\n");
-			appendf!(self, "            0 => {{ Self::UnexpectedError(String::deserialize(r){}?) }}\n", self.maybe_await());
-			self.gen_deserialize_variants(&cmd.err);
+			appendf!(self, "            0 => {{ Self::UnexpectedError(Cow::deserialize_stream(r){}?) }}\n", self.maybe_await());
+			self.gen_deserialize_variants(&cmd.err, true);
 			appendf!(self, "        }})\n"); // match
-			appendf!(self, "    }}\n"); // fn deserialize
+			appendf!(self, "    }}\n"); // fn deserialize_stream
+			if !self.use_tokio {
+				appendf!(self, "    fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+				appendf!(self, "        let discriminant = u8::deserialize(r){}?;\n", self.maybe_await());
+				appendf!(self, "        Ok(match discriminant {{\n");
+				appendf!(self, "            0 => {{ Self::UnexpectedError(Cow::deserialize(r){}?) }}\n", self.maybe_await());
+				self.gen_deserialize_variants(&cmd.err, false);
+				appendf!(self, "        }})\n"); // match
+				appendf!(self, "    }}\n"); // fn deserialize
+			}
 			appendf!(self, "}}\n\n"); // impl PBType
 		}
 	}
-	fn gen_types(&mut self, def: &PunybufDefinition) {
+	fn gen_types(&mut self) {
 		let mut should_include_hash_map_convertible = false;
-		for tp in &def.types {
+		for tp in &self.def.types {
 			if
 				tp.get_attrs().contains_key("@builtin") ||
 				tp.get_attrs().contains_key("@rust:ignore") ||
@@ -825,7 +1093,8 @@ impl RustCodegen {
 			if tp.get_attrs().contains_key("@map_convertible") {
 				appendf!(
 					self,
-					"impl<K: PBType + std::hash::Hash + Eq, V: PBType> HashMapConvertible<K, V> for {} {{",
+					"impl<'x, K: PBType<'x> + std::hash::Hash + Eq, V: PBType<'x>> \
+					HashMapConvertible<K, V> for {} {{",
 					self.get_type_name(tp)
 				);
 				should_include_hash_map_convertible = true;
@@ -855,14 +1124,26 @@ impl RustCodegen {
 					appendf!(self, "}}\n");
 				}
 			}
-			appendf!(self, "impl{} PBType for {} {{\n", self.get_type_impl_generics(tp), self.get_type_name(tp));
-			appendf!(self, "    const MIN_SIZE: usize = 0; // TODO\n");
+			appendf!(self, "impl{} PBType<'x> for {} {{\n", self.get_type_impl_generics(tp), self.get_type_name(tp));
 			if !tp.get_attrs().is_empty() {
 				appendf!(self, "    fn attributes() -> &'static [(&'static str, Option<&'static str>)] {{ &[\n");
 				for (name, value) in tp.get_attrs() {
 					appendf!(self, "        ({name:?}, {value:?}),\n");
 				}
 				appendf!(self, "    ] }}\n"); // fn attributes
+			}
+			// Currently, if the type references itself in any way,
+			// this line will fail to compile, with a message
+			// "cycle detected when computing type of ..."
+			// Async recursion isn't really supported in rust,
+			// possibly related to this issue:
+			// https://github.com/rust-lang/rust/issues/135062
+			// TODO: test this on the new solver
+			if self.use_tokio {
+				appendf!(self, "    // If you get an compile time error here saying");
+				appendf!(self, "    // \"cycle detected when computing type of...,\"");
+				appendf!(self, "    // that's because when using async, currently");
+				appendf!(self, "    // no cyclic types are supported at all. Sorry!");
 			}
 			appendf!(self, "    {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
 			match tp {
@@ -879,20 +1160,42 @@ impl RustCodegen {
 				_ => unreachable!()
 			}
 			appendf!(self, "    }}\n"); // fn serialize
-			appendf!(self, "    {} deserialize<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
+			if self.use_tokio {
+				appendf!(self, "    // If you get an compile time error here saying");
+				appendf!(self, "    // \"cycle detected when computing type of...,\"");
+				appendf!(self, "    // that's because when using async, currently");
+				appendf!(self, "    // no cyclic types are supported at all. Sorry!");
+			}
+			appendf!(self, "    {} deserialize_stream<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 			match tp {
 				PBTypeDef::Struct { fields, attrs, .. } => {
-					self.gen_deserialize_fields(fields, !attrs.contains_key("@sealed"));
+					self.gen_deserialize_fields(fields, !attrs.contains_key("@sealed"), true);
 				}
 				PBTypeDef::Enum { variants, .. } => {
-					appendf!(self, "        let discriminant = u8::deserialize(r){}?;\n", self.maybe_await());
+					appendf!(self, "        let discriminant = u8::deserialize_stream(r){}?;\n", self.maybe_await());
 					appendf!(self, "        Ok(match discriminant {{\n",);
-					self.gen_deserialize_variants(variants);
+					self.gen_deserialize_variants(variants, true);
 					appendf!(self, "        }})\n");
 				}
 				_ => unreachable!()
 			}
-			appendf!(self, "    }}\n"); // fn deserialize
+			appendf!(self, "    }}\n"); // fn deserialize_stream
+			if !self.use_tokio {
+				appendf!(self, "    fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+				match tp {
+					PBTypeDef::Struct { fields, attrs, .. } => {
+						self.gen_deserialize_fields(fields, !attrs.contains_key("@sealed"), false);
+					}
+					PBTypeDef::Enum { variants, .. } => {
+						appendf!(self, "        let discriminant = u8::deserialize(r)?;\n");
+						appendf!(self, "        Ok(match discriminant {{\n",);
+						self.gen_deserialize_variants(variants, false);
+						appendf!(self, "        }})\n");
+					}
+					_ => unreachable!()
+				}
+				appendf!(self, "    }}\n"); // fn deserialize
+			}
 			appendf!(self, "}}\n\n"); // impl PBType
 		}
 		if should_include_hash_map_convertible {
@@ -901,7 +1204,7 @@ impl RustCodegen {
 			appendf!(self, "\n\n");
 		}
 	}
-	pub fn codegen(mut self, def: &PunybufDefinition) -> String {
+	pub fn codegen(mut self) -> String {
 		appendf!(self, "#![allow(nonstandard_style)]\n");
 		appendf!(self, "///! This file was automatically generated by Punybuf.\n");
 		appendf!(self, "///! It's best you don't change anything.\n\n");
@@ -912,9 +1215,9 @@ impl RustCodegen {
 			appendf!(self, "use tokio::io::{{AsyncReadExt, AsyncWriteExt}};\n");
 		}
 
-		self.uses_common = def.includes_common;
+		self.uses_common = self.def.includes_common;
 
-		if def.includes_common {
+		if self.def.includes_common {
 			if self.use_tokio {
 				appendf!(self, "// if you get an error: punybuf_common's \"tokio\" feature must be enabled.\n");
 			}
@@ -923,16 +1226,16 @@ impl RustCodegen {
 
 		appendf!(self, "\n");
 
-		if !def.commands.is_empty() {
-			self.gen_command_enums(def);
+		if !self.def.commands.is_empty() {
+			self.gen_command_enums();
 		}
 
-		if !def.commands.is_empty() {
-			self.gen_commands(def);
+		if !self.def.commands.is_empty() {
+			self.gen_commands();
 		}
 
-		if !def.types.is_empty() {
-			self.gen_types(def);
+		if !self.def.types.is_empty() {
+			self.gen_types();
 		}
 
 		self.buffer

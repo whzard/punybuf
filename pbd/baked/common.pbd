@@ -120,6 +120,7 @@ Array<T> = Array<T>
 	available. In practice, you may implement this type as a literal `Array<U8>`.
 ]
 @builtin
+@rust:needs_lifetime
 Bytes = Array<U8>
 
 #[
@@ -134,6 +135,7 @@ Bytes = Array<U8>
 	MUST NOT fail.
 ]
 @builtin
+@rust:needs_lifetime
 String = Bytes
 
 #[

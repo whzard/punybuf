@@ -102,7 +102,7 @@ fn main() {
 			let mut file_type = "unknown";
 			let generated = if out_file.ends_with(".rs") {
 				file_type = "Rust";
-				RustCodegen::new(args.get_flag("rust:tokio"), docs).codegen(&def)
+				RustCodegen::new(args.get_flag("rust:tokio"), docs, &def).codegen()
 
 			} else if out_file.ends_with(".json") {
 				file_type = "JSON";
