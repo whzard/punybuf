@@ -22,6 +22,28 @@ impl PunybufError {
 			display_error: true, before_error: vec![], after_error: vec![]
 		}
 	}
+	pub fn wrap_before(self, mut wrapper: PunybufError) -> PunybufError {
+		for d in self.before_error {
+			wrapper.before_error.push(d);
+		}
+		wrapper.before_error.push(self.error);
+		for d in self.after_error {
+			wrapper.before_error.push(d);
+		}
+
+		wrapper
+	}
+	pub fn wrap_after(self, mut wrapper: PunybufError) -> PunybufError {
+		for d in self.before_error {
+			wrapper.after_error.push(d);
+		}
+		wrapper.after_error.push(self.error);
+		for d in self.after_error {
+			wrapper.after_error.push(d);
+		}
+
+		wrapper
+	}
 	fn explain(&self) -> String {
 		let mut result = String::new();
 		for (i, info) in self.before_error.iter().enumerate() {
@@ -106,31 +128,56 @@ impl Diagnostic {
 			)
 		}
 		let contents = self.span.file_contents.clone();
-		let line = contents.lines()
-			.nth(self.span.loc_start.row)
-			.unwrap_or(&("?".to_string() + &".".repeat(self.span.loc_end.col.saturating_sub(1))))
-			.replace("\t", " ");
-
-		let extend_for = if self.span.loc_start.row == self.span.loc_end.row {
-			self.span.loc_end.col - self.span.loc_start.col
-		} else {
-			line.len() - self.span.loc_start.col + 1
-		};
 
 		let color = self.level.get_ansi_color();
 		let symbol = self.level.get_symbol();
+
+		let mut extend_for = (
+			self.span.loc_end.col as isize - self.span.loc_start.col as isize
+		).unsigned_abs();
+		let multiline = self.span.loc_start.row != self.span.loc_end.row;
+
+		let mut lines = String::new();
+		for (row, line) in contents.lines().enumerate().skip(self.span.loc_start.row) {
+			if row > self.span.loc_end.row { break }
+			let mut fmt_line = line.replace("\t", " ");
+			if row == self.span.loc_start.row {
+				fmt_line.insert_str(self.span.loc_start.col, color);
+			} else {
+				fmt_line.insert_str(0, color);
+			}
+			if row == self.span.loc_end.row {
+				fmt_line.insert_str(self.span.loc_end.col + color.len(), NORMAL);
+			}
+			lines.push_str(&format!(
+				"{BLUE}{row: >3} | {NORMAL}{line}\n",
+				row = row + 1,
+				line = fmt_line
+			));
+			let len = line.len() - 1;
+			if multiline && len > extend_for {
+				extend_for = len
+			}
+		}
+
+		if lines.is_empty() {
+			lines.push_str(&
+				("?".to_string() + &".".repeat(self.span.loc_end.col.saturating_sub(1)) + "\n")
+				.replace("\t", " ")
+			);
+		}
 
 		format!(
 			"\
 			{BLUE}--> {GRAY}{file}:{row}:{col}\n\
 			{BLUE}    |\n\
-			{row: >3} | {NORMAL}{line}\n\
+			{NORMAL}{lines}\
 			{BLUE}    | {spaces}{BOLD}{color}{symbol}{NORMAL}{color} {content}{NORMAL}\
 			",
 			file = self.span.file_name,
 			row = self.span.loc_start.row + 1,
 			col = self.span.loc_start.col + 1,
-			spaces = " ".repeat(self.span.loc_start.col),
+			spaces = " ".repeat(self.span.loc_start.col.min(self.span.loc_end.col - 1)),
 			symbol = symbol.repeat(extend_for),
 			content = self.content
 		)
