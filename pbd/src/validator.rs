@@ -442,6 +442,27 @@ impl<'d> PunybufValidator<'d> {
 						)
 					));
 				}
+				if let Some(cmd) = self.definition.commands.iter()
+					.find(|c| c.name == refr.reference)
+				{
+					return Err(pb_err!(
+						refr.reference_span,
+						format!(
+							"cannot find type `{}` in scope",
+							refr.reference
+						),
+						after_error: vec![
+							diagnostic!(Tip,
+								cmd.name_span.clone(),
+								format!(
+									"tip: `{}` is defined here as a command, \
+									but types cannot reference commands",
+									cmd.name
+								)
+							)
+						]
+					));
+				}
 				Err(pb_err!(
 					refr.reference_span,
 					format!("cannot find type `{}` in scope", refr.reference)
