@@ -1076,7 +1076,7 @@ impl<'d> PunybufValidator<'d> {
 							)
 						),
 						diagnostic!(Error,
-							other_span.clone(),
+							cmd.name_span.clone(),
 							format!(
 								"command {} of layer {} also has ID {}",
 								cmd.name, cmd.layer,
