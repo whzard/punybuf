@@ -277,6 +277,24 @@ impl LayerResolver {
 
 		self.resolve_references(definition);
 	}
+	fn resolve_alias_generics(params: &Vec<String>, input: &Vec<PBTypeRef>, generics: &mut Vec<PBTypeRef>) {
+		for output_generic_param in generics {
+			// @resolve
+			// Alias<T, Y> = Output<T, String, Y>
+			// ...
+			// Other = { refr: Alias<InputRef, InputRef> }
+			if output_generic_param.is_global {
+				Self::resolve_alias_generics(params, input, &mut output_generic_param.generics);
+				continue;
+			}
+
+			let arg_index = params.iter().position(|arg| arg == &output_generic_param.reference)
+				.expect(&format!("bad state: can't find a generic param {}", output_generic_param.reference));
+			let input_ref = &input[arg_index];
+
+			*output_generic_param = input_ref.clone();
+		}
+	}
 	fn resolve_alias(refr: &PBTypeRef, tp: &PBTypeDef) -> PBTypeRef {
 		let PBTypeDef::Alias { alias, generic_params, .. } = tp else {
 			panic!("bad state: @resolve may only be used on aliases");
@@ -295,19 +313,7 @@ impl LayerResolver {
 			return input_ref.clone();
 		}
 
-		for output_generic_param in &mut result.generics {
-			// @resolve
-			// Alias<T, Y> = Output<T, String, Y>
-			// ...
-			// Other = { refr: Alias<InputRef, InputRef> }
-			if output_generic_param.is_global { continue }
-
-			let arg_index = generic_params.iter().position(|arg| arg == &output_generic_param.reference)
-				.expect("bad state: can't find a generic param");
-			let input_ref = &refr.generics[arg_index];
-
-			*output_generic_param = input_ref.clone();
-		}
+		Self::resolve_alias_generics(generic_params, &refr.generics, &mut result.generics);
 
 		result
 	}

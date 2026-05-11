@@ -1,0 +1,23 @@
+@builtin
+Builtin = Builtin
+
+SomeStruct = {
+	field_1: Builtin
+	field_2: Opaque<Builtin>
+	field_3: MoreOpaque<Builtin>
+	field_4: GoingCrazy<Builtin>
+	field_5: Nested<GoingCrazy<Builtin>>
+}
+
+@resolve
+Opaque<T> = T
+
+@resolve
+MoreOpaque<T> = Opaque<T>
+
+@resolve
+GoingCrazy<X> = Opaque<Opaque<X>>
+
+Nested<Y> = {
+	field: GoingCrazy<Y>
+}
