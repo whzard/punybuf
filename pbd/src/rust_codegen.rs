@@ -1175,10 +1175,10 @@ impl<'def> RustCodegen<'def> {
 			// https://github.com/rust-lang/rust/issues/135062
 			// TODO: test this on the new solver
 			if self.use_tokio {
-				appendf!(self, "    // If you get an compile time error here saying");
-				appendf!(self, "    // \"cycle detected when computing type of...,\"");
-				appendf!(self, "    // that's because when using async, currently");
-				appendf!(self, "    // no cyclic types are supported at all. Sorry!");
+				appendf!(self, "    // If you get an compile time error here saying\n");
+				appendf!(self, "    // \"cycle detected when computing type of...,\"\n");
+				appendf!(self, "    // that's because when using async, currently\n");
+				appendf!(self, "    // no cyclic types are supported at all. Sorry!\n");
 			}
 			appendf!(self, "    {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
 			match tp {
@@ -1196,10 +1196,10 @@ impl<'def> RustCodegen<'def> {
 			}
 			appendf!(self, "    }}\n"); // fn serialize
 			if self.use_tokio {
-				appendf!(self, "    // If you get an compile time error here saying");
-				appendf!(self, "    // \"cycle detected when computing type of...,\"");
-				appendf!(self, "    // that's because when using async, currently");
-				appendf!(self, "    // no cyclic types are supported at all. Sorry!");
+				appendf!(self, "    // If you get an compile time error here saying\n");
+				appendf!(self, "    // \"cycle detected when computing type of...,\"\n");
+				appendf!(self, "    // that's because when using async, currently\n");
+				appendf!(self, "    // no cyclic types are supported at all. Sorry!\n");
 			}
 			appendf!(self, "    {} deserialize_stream<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 			match tp {
