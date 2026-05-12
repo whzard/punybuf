@@ -163,14 +163,30 @@ impl<'parser> Parser<'parser> {
 	pub fn parse(&mut self) -> Result<Vec<Declaration>, PunybufError> {
 		let mut decls = Vec::new();
 		let mut nextdoc: Option<(&str, &Span)> = None;
-		let mut next_attrs = HashMap::new();
+		let mut next_attrs = HashMap::<&String, (&Option<String>, &Span)>::new();
 
 		let mut layer = 0u32;
 
+		// TODO: make these errors just as pretty everywhere
 		while let Some(tk) = self.peekable.next() {
 			match &tk.data {
 				TokenData::Attribute(attr, val) => {
-					next_attrs.insert(attr.clone(), val.clone());
+					if let Some((_, first_span)) = next_attrs.insert(&attr, (&val, &tk.span)) {
+						return Err(pb_err!(
+							tk.span,
+							format!("attribute {attr} defined twice"),
+							ErrorInfo::instead(vec![
+								diagnostic!(Info,
+									first_span.clone(),
+									format!("attribute defined here first...")
+								),
+								diagnostic!(Error,
+									tk.span.clone(),
+									format!("...then defined here again")
+								)
+							])
+						));
+					}
 				}
 				TokenData::Docs(doc) => {
 					if let Some((_, first_span)) = nextdoc {
@@ -180,7 +196,7 @@ impl<'parser> Parser<'parser> {
 							ErrorInfo::instead(vec![
 								diagnostic!(Info,
 									first_span.clone(),
-									format!("documentation defined here first")
+									format!("documentation defined here first...")
 								),
 								diagnostic!(Error,
 									tk.span.clone(),
@@ -418,7 +434,10 @@ impl<'parser> Parser<'parser> {
 						symbol: name.to_string(),
 						symbol_span: tk.span.clone(),
 						value,
-						attrs: next_attrs,
+						// TODO?: this is ugly
+						attrs: next_attrs.iter().map(|(attr, (val, _))|
+							(attr.to_string(), val.as_ref().map(|n| n.to_string()))
+						).collect(),
 						doc: nextdoc.unwrap_or(("", &Span::impossible())).0.to_string()
 					});
 					nextdoc = None;
@@ -539,7 +558,9 @@ impl<'parser> Parser<'parser> {
 		while let Some(token) = peekable.next() {
 			match &token.data {
 				TokenData::Attribute(attr, val) => {
-					next_attrs.insert(attr.clone(), val.clone());
+					if let Some(_) = next_attrs.insert(attr.clone(), val.clone()) {
+						return Err(parser_err!(token.span, "attribute {attr} defined twice"));
+					}
 				}
 				TokenData::Docs(doc) => {
 					if let Some(_) = next_doc {
@@ -718,7 +739,9 @@ impl<'parser> Parser<'parser> {
 		while let Some(tk) = peekable.next() {
 			match &tk.data {
 				TokenData::Attribute(attr, val) => {
-					next_attrs.insert(attr.clone(), val.clone());
+					if let Some(_) = next_attrs.insert(attr.clone(), val.clone()) {
+						return Err(parser_err!(tk.span, "attribute {attr} defined twice"));
+					}
 				}
 				TokenData::Docs(doc) => {
 					if let Some(_) = next_doc {
@@ -781,7 +804,9 @@ impl<'parser> Parser<'parser> {
 		while let Some(tk) = peekable.peek() {
 			match &tk.data {
 				TokenData::Attribute(attr, val) => {
-					next_attrs.insert(attr.clone(), val.clone());
+					if let Some(_) = next_attrs.insert(attr.clone(), val.clone()) {
+						return Err(parser_err!(tk.span, "attribute {attr} defined twice"));
+					}
 				}
 				TokenData::Docs(doc) => {
 					if let Some(_) = next_doc {
@@ -833,7 +858,9 @@ impl<'parser> Parser<'parser> {
 		while let Some(token) = peekable.next() {
 			match &token.data {
 				TokenData::Attribute(attr, val) => {
-					next_attrs.insert(attr.clone(), val.clone());
+					if let Some(_) = next_attrs.insert(attr.clone(), val.clone()) {
+						return Err(parser_err!(token.span, "attribute {attr} defined twice"));
+					}
 				}
 				TokenData::Docs(doc) => {
 					if let Some(_) = next_doc {

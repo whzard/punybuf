@@ -115,11 +115,26 @@ impl Token {
 				loc_end.col = loc.col + string.len();
 			}
 			TokenData::Attribute(name, value) => {
-				loc_end.col = loc.col + name.len() + if let Some(value) = value {
-					value.len() + 2 // length of "()"
-				} else {
-					0
-				};
+				loc_end.col = loc.col + name.len();
+
+				if let Some(value) = value {
+					let mut current_row = loc_end.row;
+					let mut current_col = loc_end.col + "(".len();
+
+					// Not the fastest way, since we already iterate over
+					// all the chars in docs, but works for now
+					for ch in value.chars() {
+						if ch == '\n' {
+							current_col = 0;
+							current_row += 1;
+						} else {
+							current_col += 1;
+						}
+					}
+					current_col += ")".len();
+					loc_end.row = current_row;
+					loc_end.col = current_col;
+				}
 			}
 			TokenData::Numeric(n) => {
 				loc_end.col = loc.col + n.to_string().len();
@@ -129,7 +144,7 @@ impl Token {
 			}
 			TokenData::Docs(docs) => {
 				let mut current_row = loc.row;
-				let mut current_col = loc.col + 3;
+				let mut current_col = loc.col + "#[".len();
 
 				// Not the fastest way, since we already iterate over
 				// all the chars in docs, but works for now
@@ -141,6 +156,7 @@ impl Token {
 						current_col += 1;
 					}
 				}
+				current_col += "]".len();
 				loc_end = Loc { col: current_col, row: current_row }
 			}
 			TokenData::LayerKeyword => {
@@ -294,10 +310,12 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 							let mut doc = String::new();
 
 							let mut nesting = 1;
+							let mut stopped = false;
 							while let Some(x) = peekable.next() {
 								if x == ']' {
 									nesting -= 1;
 									if nesting <= 0 {
+										stopped = true;
 										break;
 									}
 								}
@@ -306,6 +324,14 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 								}
 
 								doc.push(x);
+							}
+
+							if !stopped {
+								return Err(self.lex_error(format!(
+									"expected a closing bracket (`]`) to end the doc-comment at {}:{}:{}",
+									self.file_name,
+									self.current_loc.row + 1, self.current_loc.col + 1
+								)));
 							}
 
 							let doc_token = self.token(TokenData::Docs(doc));
@@ -341,12 +367,12 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 				'-' => {
 					if let Some(chn) = peekable.next() {
 						if chn != '>' {
-							return Err(self.lex_error(format!("Expected `>` to make an arrow (`->`), found `{chn}`")));
+							return Err(self.lex_error(format!("expected `>` to make an arrow (`->`), found `{chn}`")));
 						}
 						tokens.push(self.token(TokenData::Arrow));
 						self.current_loc.col += 1;
 					} else {
-						return Err(self.lex_error(format!("Expected `>` to make an arrow (`->`), found nothing")));
+						return Err(self.lex_error(format!("expected `>` to make an arrow (`->`), found nothing")));
 					}
 				},
 				'{' => {
@@ -357,7 +383,7 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 					let loc_end = self.current_loc.clone();
 					if !stopped {
 						return Err(self.lex_error(format!(
-							"Expected a closing brace (`}}`) to match one at {}:{}:{}",
+							"expected a closing brace (`}}`) to match one at {}:{}:{}",
 							self.file_name,
 							loc_begin.row + 1, loc_begin.col + 1
 						)));
@@ -377,7 +403,7 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 					let loc_end = self.current_loc.clone();
 					if !stopped {
 						return Err(self.lex_error(format!(
-							"Expected a closing bracket (`]`) to match one at {}:{}:{}",
+							"expected a closing bracket (`]`) to match one at {}:{}:{}",
 							self.file_name,
 							loc_begin.row + 1, loc_begin.col + 1
 						)));
@@ -397,7 +423,7 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 					let loc_end = self.current_loc.clone();
 					if !stopped {
 						return Err(self.lex_error(format!(
-							"Expected a closing parenthesis (`)`) to match one at {}:{}:{}",
+							"expected a closing parenthesis (`)`) to match one at {}:{}:{}",
 							self.file_name,
 							loc_begin.row + 1, loc_begin.col + 1
 						)));
@@ -417,7 +443,7 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 					let loc_end = self.current_loc.clone();
 					if !stopped {
 						return Err(self.lex_error(format!(
-							"Expected a closing angle bracket (`>`) to match one at {}:{}:{}",
+							"expected a closing angle bracket (`>`) to match one at {}:{}:{}",
 							self.file_name,
 							loc_begin.row + 1, loc_begin.col + 1
 						)));
@@ -440,9 +466,11 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 							let mut string = String::new();
 
 							let mut nest_level = 0;
+							let mut stopped = false;
 							while let Some(chn) = peekable.next() {
 								if chn == ')' {
 									if nest_level <= 0 {
+										stopped = true;
 										break;
 									} else {
 										nest_level -= 1;
@@ -452,6 +480,14 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 									nest_level += 1;
 								}
 								string.push(chn);
+							}
+
+							if !stopped {
+								return Err(self.lex_error(format!(
+									"expected a closing parenthesis (`)`) to end the attribute at {}:{}:{}",
+									self.file_name,
+									self.current_loc.row + 1, self.current_loc.col + 1
+								)));
 							}
 
 							value = Some(string);
