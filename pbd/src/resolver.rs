@@ -208,7 +208,13 @@ impl LayerResolver {
 				DependentKind::Command => {
 					let mut new_cmd = Self::get_command_from_dependent(definition, dependent).unwrap().clone(); // trust the verifier
 					new_cmd.layer = *changed_type.get_layer();
-					new_cmd.command_id = PB_CRC.checksum(format!("{}.{}", new_cmd.name, new_cmd.layer).as_bytes());
+					// TODO: what if two commands get the same ID because of this?
+					let name = if let Some(Some(overridden_name)) = new_cmd.attrs.get("@name") {
+						overridden_name
+					} else {
+						&new_cmd.name
+					};
+					new_cmd.command_id = PB_CRC.checksum(format!("{}.{}", name, new_cmd.layer).as_bytes());
 					new_commands.push(new_cmd);
 				}
 			}

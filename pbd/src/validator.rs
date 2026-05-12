@@ -1044,6 +1044,7 @@ impl<'d> PunybufValidator<'d> {
 						])
 					));
 				}
+				unreachable!();
 			}
 			if cmd.name == "Void" {
 				return Err(parser_err!(
@@ -1113,6 +1114,53 @@ impl<'d> PunybufValidator<'d> {
 				));
 			}
 			seen_ids.insert(cmd.command_id, (&cmd.name, &cmd.layer, &cmd.name_span));
+		}
+		for cmd in &self.definition.commands {
+			if
+				let Some(Some(overridden_name)) = cmd.attrs.get("@name") &&
+				let Some(already_decl) = declared_things
+					.iter()
+					.find(|x| x.0 == overridden_name && x.1 >= &cmd.layer && x.3 == ThingKind::Command)
+			{
+				return Err(pb_err!(
+					already_decl.2,
+					format!("commands `{}` and `{}` may get duplicate IDs", cmd.name, already_decl.0),
+					ErrorInfo::instead(vec![
+						diagnostic!(Info,
+							already_decl.2.clone(),
+							format!(
+								"this command gets the id = \
+								crc32(\"{name}.{layer}\")",
+								name = already_decl.0,
+								layer = already_decl.1,
+							)
+						),
+						diagnostic!(Error,
+							cmd.name_span.clone(),
+							format!(
+								"after layer resolution, \
+								the next version of this command may get the id = \
+								crc32(\"{overridden_name}.{layer}\") \
+								because its name was overriden with @name",
+								layer = already_decl.1,
+							)
+						),
+						diagnostic!(Tip,
+							cmd.name_span.clone(),
+							format!("tip: try removing or changing the @name attribute")
+						),
+						diagnostic!(Info,
+							Span::impossible(),
+							format!(
+								"info: right now, the punybuf comiler \
+								is unable to tell whether any duplicate \
+								ids will actually occur, so it's being \
+								conservative in this case, sorry!"
+							)
+						)
+					])
+				));
+			}
 		}
 		Ok(())
 	}
