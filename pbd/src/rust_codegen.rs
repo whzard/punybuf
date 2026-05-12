@@ -581,6 +581,23 @@ impl<'def> RustCodegen<'def> {
 		appendf!(self, "\n");
 		appendf!(self, "        }})\n"); // match
 		appendf!(self, "    }}\n"); // fn deserialize_return_stream
+		if !self.use_tokio {
+			appendf!(self, "    pub fn deserialize_return<'a: 'x>(id: u32, r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+			appendf!(self, "        Ok(match id {{\n");
+			for cmd in &self.def.commands {
+				if cmd.attrs.contains_key("@rust:ignore") {
+					continue;
+				}
+				appendf!(self,
+					"            {} => Self::{}({}::deserialize(r){}?),\n",
+					cmd.command_id, self.get_command_name(cmd), self.gen_reference(&cmd.ret, true), self.maybe_await()
+				);
+			}
+			appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
+			appendf!(self, "\n");
+			appendf!(self, "        }})\n"); // match
+			appendf!(self, "    }}\n"); // fn deserialize_return
+		}
 		appendf!(self, "}}\n\n"); // impl CommandReturn
 
 		appendf!(self, "/// This enum contains all possible command error types in the RPC definition.\n");
@@ -628,6 +645,24 @@ impl<'def> RustCodegen<'def> {
 		appendf!(self, "\n");
 		appendf!(self, "        }})\n"); // match
 		appendf!(self, "    }}\n"); // fn deserialize_error_stream
+
+		if !self.use_tokio {
+			appendf!(self, "    pub fn deserialize_error<'a: 'x>(id: u32, r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+			appendf!(self, "        Ok(match id {{\n");
+			for cmd in &self.def.commands {
+				if cmd.attrs.contains_key("@rust:ignore") {
+					continue;
+				}
+				appendf!(self,
+					"            {} => Self::{}({}::deserialize(r){}?),\n",
+					cmd.command_id, self.get_command_name(cmd), self.get_command_err(cmd), self.maybe_await()
+				);
+			}
+			appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
+			appendf!(self, "\n");
+			appendf!(self, "        }})\n"); // match
+			appendf!(self, "    }}\n"); // fn deserialize_error
+		}
 		appendf!(self, "}}\n\n"); // impl CommandError
 	}
 	fn gen_fields(&mut self, fields: &Vec<PBField>) {

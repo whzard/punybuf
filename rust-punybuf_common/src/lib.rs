@@ -347,7 +347,7 @@ impl<'x, T: PBType<'x>> PBType<'x> for Vec<T> {
 
 /// A convenience type wrapping a `Vec<u8>`, for more efficient (de)serialization.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Bytes<'a>(Cow<'a, [u8]>);
+pub struct Bytes<'a>(pub Cow<'a, [u8]>);
 
 impl<'x> PBType<'x> for Bytes<'x> {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
