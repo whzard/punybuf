@@ -183,12 +183,11 @@ impl Diagnostic {
 
 		format!(
 			"\
-			{BLUE}--> {GRAY}{file}:{row}:{col}--{x:?}\n\
+			{BLUE}--> {GRAY}{file}:{row}:{col}\n\
 			{BLUE}    |\n\
 			{NORMAL}{lines}\
 			{BLUE}    | {spaces}{BOLD}{color}{symbol}{NORMAL}{color} {content}{NORMAL}\
 			",
-			x = self.span,
 			file = self.span.file_name,
 			row = self.span.loc_start.row + 1,
 			col = self.span.loc_start.col + 1,
