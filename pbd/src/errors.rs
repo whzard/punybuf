@@ -140,6 +140,8 @@ impl Diagnostic {
 			self.span.loc_end.col as isize - self.span.loc_start.col as isize
 		).unsigned_abs();
 
+		let mut digits = 3;
+
 		let mut lines = String::new();
 		for (row, line) in contents.lines().enumerate().skip(self.span.loc_start.row) {
 			if row > self.span.loc_end.row { break }
@@ -163,6 +165,10 @@ impl Diagnostic {
 				row = row + 1,
 				line = fmt_line
 			));
+			let row_digits = (row as f64).log10().abs() as usize + 1;
+			if row_digits > digits {
+				digits = row_digits;
+			}
 			let len = line.chars().count();
 			if
 				row != self.span.loc_end.row &&
@@ -172,7 +178,6 @@ impl Diagnostic {
 				extend_for = len;
 			}
 		}
-		dbg!(&self.span.loc_start, &self.span.loc_end);
 
 		if lines.is_empty() {
 			lines.push_str(&
@@ -184,12 +189,13 @@ impl Diagnostic {
 		format!(
 			"\
 			{BLUE}--> {GRAY}{file}:{row}:{col}\n\
-			{BLUE}    |\n\
+			{BLUE}{digit_spaces} |\n\
 			{NORMAL}{lines}\
-			{BLUE}    | {spaces}{BOLD}{color}{symbol}{NORMAL}{color} {content}{NORMAL}\
+			{BLUE}{digit_spaces} | {spaces}{BOLD}{color}{symbol}{NORMAL}{color} {content}{NORMAL}\
 			",
 			file = self.span.file_name,
 			row = self.span.loc_start.row + 1,
+			digit_spaces = " ".repeat(digits),
 			col = self.span.loc_start.col + 1,
 			spaces = " ".repeat(self.span.loc_start.col.min(self.span.loc_end.col.saturating_sub(1))),
 			symbol = symbol.repeat(extend_for),

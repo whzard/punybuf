@@ -1152,7 +1152,7 @@ impl<'d> PunybufValidator<'d> {
 						diagnostic!(Info,
 							Span::impossible(),
 							format!(
-								"info: right now, the punybuf comiler \
+								"info: right now, the punybuf compiler \
 								is unable to tell whether any duplicate \
 								ids will actually occur, so it's being \
 								conservative in this case, sorry!"
