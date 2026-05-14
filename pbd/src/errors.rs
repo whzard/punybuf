@@ -79,7 +79,7 @@ pub const RED: &str = "\x1b[91m";
 pub const BLUE: &str = "\x1b[94m";
 pub const YELLOW: &str = "\x1b[93m";
 pub const NORMAL: &str = "\x1b[0m";
-pub const GRAY: &str = "\x1b[30m";
+pub const GRAY: &str = "\x1b[37m";
 #[allow(unused)] // this is not true, this constant is used in main.rs
 pub const GREEN: &str = "\x1b[32m";
 #[allow(unused)]
