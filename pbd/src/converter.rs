@@ -86,7 +86,8 @@ use std::collections::HashMap;
 use json::JsonValue;
 
 use crate::{flattener::{
-	PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBFieldFlag, PBTypeDef, PBTypeRef, PunybufDefinition
+	PBCommandArg, PBCommandDef, PBEnumVariant, PBField,
+	PBFieldFlag, PBTypeDef, PBTypeRef, PunybufDefinition
 }, lexer::Span};
 
 fn convert_attrs(attrs: &HashMap<String, Option<String>>) -> json::JsonValue {

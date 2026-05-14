@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
 use crate::{errors::{BOLD, NORMAL, YELLOW}, flattener::{
-	PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBTypeDef, PBTypeRef, PunybufDefinition,
+	PBCommandArg, PBCommandDef, PBEnumVariant, PBField,
+	PBTypeDef, PBTypeRef, PunybufDefinition,
 }};
 
 const TO_MAP: &str = r#"

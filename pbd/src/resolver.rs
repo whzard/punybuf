@@ -12,7 +12,8 @@ use std::{
 };
 
 use crate::flattener::{
-	PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBTypeDef, PBTypeRef, PunybufDefinition,
+	PBCommandArg, PBCommandDef, PBEnumVariant, PBField,
+	PBTypeDef, PBTypeRef, PunybufDefinition,
 	PB_CRC,
 };
 

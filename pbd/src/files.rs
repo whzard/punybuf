@@ -2,7 +2,7 @@ use std::{env, fs::read_to_string, io, path::Path, rc::Rc};
 
 use crate::{
 	diagnostic, errors::{
-		BOLD, Diagnostic, ErrorInfo, InfoLevel, NORMAL, PunybufError, YELLOW
+		BOLD, NORMAL, PunybufError, YELLOW
 	}, lexer::{IncludeDisallowed, IncludeHandler, Lexer, Loc, Span, Token}, pb_err
 };
 

@@ -11,7 +11,10 @@ mod rust_codegen;
 
 use std::{io, path::{Path}};
 
-use crate::{errors::PunybufError, flattener::PunybufDefinition, parser::{Declaration, Parser}, resolver::LayerResolver};
+use crate::{
+	errors::PunybufError, flattener::PunybufDefinition,
+	parser::{Declaration, Parser}, resolver::LayerResolver
+};
 
 pub struct PunybufParser;
 

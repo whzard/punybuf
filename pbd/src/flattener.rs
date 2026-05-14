@@ -2,7 +2,7 @@ use crc::{Crc, CRC_32_CKSUM};
 use std::collections::HashMap;
 
 use crate::{
-	errors::{ErrorInfo, PunybufError, parser_err},
+	errors::{PunybufError, parser_err},
 	lexer::Span,
 	parser::{
 		CommandArgument, Declaration, DeclarationValue, EnumVariant, Field,

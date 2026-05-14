@@ -3,10 +3,11 @@ use std::{collections::HashMap, fmt::Display, u32};
 use crate::{
 	errors::{
 		diagnostic,
-		Diagnostic, ErrorInfo, InfoLevel, PunybufError, parser_err, pb_err
+		Diagnostic, ErrorInfo, PunybufError, parser_err, pb_err
 	},
 	flattener::{
-		PB_CRC, PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBFieldFlag, PBTypeDef, PBTypeRef, PunybufDefinition
+		PB_CRC, PBCommandArg, PBCommandDef, PBEnumVariant,
+		PBField, PBFieldFlag, PBTypeDef, PBTypeRef, PunybufDefinition
 	},
 	lexer::Span,
 };
