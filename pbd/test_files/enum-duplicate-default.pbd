@@ -1,0 +1,9 @@
+@builtin
+Builtin = Builtin
+
+BadEnum = [
+	@default FirstDefault,
+	@default SecondDefault,
+	Normal,
+	@extension Extension: Builtin
+]

@@ -816,7 +816,7 @@ impl<'d> PunybufValidator<'d> {
 		return Ok(());
 	}
 	pub fn validate_enum(&mut self, owner: &Owner, variants: &Vec<PBEnumVariant>) -> Result<(), PunybufError> {
-		let mut default_variant_present = false;
+		let mut default_variant = None::<&PBEnumVariant>;
 		let mut extension_discriminant = None::<u8>;
 
 		let mut seen_names: Vec<(&str, &Span)> = vec![];
@@ -843,6 +843,22 @@ impl<'d> PunybufValidator<'d> {
 			// (right now, you can't set your own so it's fine)
 
 			if variant.attrs.contains_key("@default") {
+				if let Some(already_default) = default_variant {
+					return Err(pb_err!(
+						variant.name_span,
+						format!("an enum can only have one `@default` variant"),
+						ErrorInfo::instead(vec![
+							diagnostic!(Info,
+								already_default.name_span.clone(),
+								format!("first `@default` variant defined here")
+							),
+							diagnostic!(Error,
+								variant.name_span.clone(),
+								format!("another `@default` variant defined here")
+							),
+						])
+					));
+				}
 				if variant.attrs.contains_key("@extension") {
 					return Err(pb_err!(
 						variant.name_span,
@@ -861,14 +877,14 @@ impl<'d> PunybufValidator<'d> {
 						]
 					));
 				}
-				default_variant_present = true;
+				default_variant = Some(variant);
 			}
 
 			if variant.attrs.contains_key("@extension") {
 				// right now, since all enum variants are
 				// sequential, a @default key must always come before
 				// @extensions
-				if !default_variant_present {
+				if default_variant.is_none() {
 					return Err(pb_err!(
 						variant.name_span,
 						format!("an `@extension` variant cannot be defined without a `@default` variant present")
