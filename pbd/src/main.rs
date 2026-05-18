@@ -1,6 +1,6 @@
 use clap::{arg, command, ArgAction};
 use std::{
-	fs::{read_to_string, File},
+	fs::{self, File, read_to_string},
 	io::Write,
 	path::Path,
 	process::exit,
@@ -9,6 +9,7 @@ use std::{
 mod files;
 
 mod lexer;
+use lexer::Span;
 
 mod errors;
 use errors::*;
@@ -26,13 +27,10 @@ use resolver::LayerResolver;
 
 mod converter;
 
-mod rust_codegen;
-use rust_codegen::RustCodegen;
-
-use crate::lexer::Span;
+mod codegen;
+use codegen::{RustCodegen, HTMLCodegen};
 
 mod binary_compat;
-
 
 fn main() {
 	let args = command!()
@@ -50,6 +48,7 @@ fn main() {
 		.arg(arg!(--"no-resolve" "Skip `@resolve`-ing aliases."))
 		.arg(arg!(--"no-docs" "Do not generate doc-comments. Doesn't affect json."))
 		.arg(arg!(--"rust:tokio" "Generate async rust code for tokio. Affects only `.rs` files from --out."))
+		.arg(arg!(--"html:template" <PATH> "Path to the template to be used to generate `.html` files."))
 		.get_matches()
 	;
 
@@ -108,6 +107,17 @@ fn main() {
 				file_type = "JSON";
 				converter::convert_full_definition(&def)
 
+			} else if out_file.ends_with(".htm") || out_file.ends_with(".html") {
+				file_type = "HTML";
+				let template = if let Some(template_path) = args.get_one::<String>("html:template") {
+					Some(fs::read_to_string(template_path).map_err(|e|
+						format!("html: failed to read template {template_path}: {}", e.to_string())
+					)?)
+				} else {
+					None
+				};
+				HTMLCodegen::new(&def, template.as_deref()).codegen()
+				
 			} else {
 				return Err(format!(
 					"can't output a file `{out_file}` - file type not supported\n  \

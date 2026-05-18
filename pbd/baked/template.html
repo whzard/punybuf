@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<style>
+			html {
+				height: 100%;
+			}
+			body {
+				background: #21201e;
+				color: #f2ebdd;
+				display: flex;
+				--sidebar-width: 200px;
+				font-family: system-ui;
+				margin: 0;
+				gap: 8px;
+				height: 100%;
+				font-size: 1rem;
+			}
+			a {
+				color: #cee8f2;
+				text-decoration: none;
+				border-radius: 2px;
+			}
+			a:hover {
+				color: #e4eef0;
+				background: #f4ad0529;
+				box-shadow: 0 0 0 2px #f4ad0529;
+			}
+			a:active {
+				color: #e4eef0;
+				background: #f4c24973;
+				box-shadow: 0 0 0 2px #f4c24973;
+			}
+			.sidebar {
+				display: flex;
+				flex-direction: column;
+				padding: 12px;
+				border-right: 1px solid #3f3c38;
+				width: var(--sidebar-width);
+				background: #11110f;
+				overflow-y: auto;
+				overflow-x: hidden;
+			}
+			.sidebar-nav {
+				padding: 4px;
+				margin-block: 2px;
+			}
+			.sidebar-section {
+				display: flex;
+				flex-direction: column;
+			}
+			.code, .ref {
+				font-family: monospace;
+				font-size: 1rem;
+			}
+			h1 {
+				border-bottom: 1px solid #3f3c38;
+				padding-bottom: 8px;
+				display: flex;
+				align-items: center;
+			}
+			.layer {
+				margin-inline-start: 12px;
+			}
+			.layer summary {
+				cursor: pointer;
+			}
+			.layer summary div {
+				display: inline-flex;
+			}
+			.notice {
+				margin-block-start: 16px;
+				margin-block-end: 0;
+			}
+			h2.code {
+				font-size: 1.5rem;
+			}
+			.item-header {
+				color: wheat;
+				display: flex;
+				align-items: center;
+			}
+			h3.item-header {
+				margin-top: 8px;
+				color: #f2ebdd;
+			}
+			.chip {
+				font-size: initial;
+				padding-block: 4px;
+				padding-inline: 8px;
+				background: #11110fb8;
+				border-radius: 6px;
+				margin-inline-start: 8px;
+				color: #f2ebdd;
+			}
+			.sidebar-section-title, .item-header {
+				margin-bottom: 4px;
+			}
+			main {
+				display: flex;
+				flex-direction: column;
+				overflow: auto;
+				flex-grow: 1;
+				align-items: center;
+			}
+			.item-content {
+				padding-inline: 12px;
+			}
+			.generic-args {
+				font-size: inherit;
+				color: #f2ebdd;
+				padding-inline-start: 8px;
+			}
+			.description pre {
+				font-family: system-ui;
+				margin: 0;
+				margin-bottom: 8px;
+				text-wrap: auto;
+			}
+			.spec {
+				width: 100%;
+				padding: 8px;
+				table-layout: fixed;
+				background: #11110f;
+				border-radius: 6px;
+				margin-bottom: 8px;
+				border-collapse: collapse;
+			}
+			.attr {
+				color: #c19fcd;
+			}
+			.spec tr:not(:first-child) {
+				border-top: 1px solid #21201e;
+			}
+			.spec tr:first-child td {
+				padding-top: 12px;
+			}
+			.spec tr:last-child td {
+				padding-bottom: 12px;
+			}
+			.spec td {
+				padding-inline: 12px;
+				padding-block: 8px;
+			}
+			.spec .flag {
+				border-top: none !important;
+			}
+			.spec .flag td {
+				padding-top: 0;
+				padding-inline-start: 26px;
+			}
+			.notice, .spec .flag-mark, .spec .default-error {
+				color:  #bcb6a9;
+			}
+			.spec td:first-child {
+				width: 30%;
+				word-break: break-all;
+			}
+			.attr-list td {
+				padding-bottom: 0;
+			}
+			.attr-list + tr {
+				border-top: none !important;
+			}
+			.attr {
+				font-size: .9rem !important;
+			}
+			.attr-list .attr:not(:first-child) {
+				margin-inline-start: 8px;
+			}
+			.item-attr-list {
+				display: flex;
+				flex-wrap: wrap;
+				padding-block: 6px;
+				margin-block: 4px;
+				border-radius: 6px;
+				flex-direction: column;
+			}
+			.mini-item-description {
+				font-size: .9rem;
+				border-top: none !important;
+			}
+			.mini-item-description td {
+				padding-top: 0;
+			}
+			.width-limit {
+				flex-direction: column;
+				max-width: 45em;
+				width: 100%;
+			}
+			h4 {
+				margin: 0;
+				margin-top: 8px;
+				margin-bottom: 4px;
+			}
+			.md p, .md ul, .md ol, .md pre {
+				margin-block: .5rem;
+			}
+			.mini-item-description .md p,
+			.mini-item-description .md ul,
+			.mini-item-description .md ol,
+			.mini-item-description .md pre {
+				margin-block: .1rem;
+			}
+			.md ul, .md ol {
+				padding-inline-start: 1.5rem;
+			}
+			.md code {
+				background: #11110f;
+				border-radius: 4px;
+				padding-inline: 4px;
+			}
+			.md pre {
+				padding-block: 4px;
+				padding-inline: 8px;
+				margin-block: 8px;
+				background: #11110f;
+				border-radius: 6px;
+			}
+			.md pre code {
+				padding-inline: 0;
+			}
+			.md a:hover code, .md a:active code {
+				background: transparent;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="sidebar">
+			%sidebar
+		</div>
+		<main><div class="width-limit">
+			%main
+		</div></main>
+	</body>
+</html>

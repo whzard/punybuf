@@ -7,7 +7,7 @@ mod parser;
 mod resolver;
 mod flattener;
 mod validator;
-mod rust_codegen;
+mod codegen;
 
 use std::{io, path::{Path}};
 
@@ -18,8 +18,10 @@ use crate::{
 
 pub struct PunybufParser;
 
-pub use crate::converter::convert_full_definition;
-pub use crate::rust_codegen::RustCodegen;
+pub use crate::{
+	converter::convert_full_definition,
+	codegen::*
+};
 
 pub struct Parsed {
 	declarations: Vec<Declaration>,

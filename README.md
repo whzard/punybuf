@@ -29,7 +29,15 @@ Since Rust is supported natively, to generate Rust code, you may use:
 ```sh
 $ pbd ./path/to/file.pbd -o ./out.rs
 ```
-This command won't spit in your `stdout`.
+
+You can also generate documentation for your definition like so:
+```sh
+$ pbd ./path/to/file.pbd -o ./out.html
+```
+You can define an HTML template with `--html:template`. This template will replace the keyword `%sidebar` with the contents of the sidebar and the keyword `%main` with the main documentation. The HTML output parses Markdown automatically. You can look into [the default template](./pbd/baked/template.html) to see what CSS classes the documentation defines.
+
+
+Providing `-o` won't spit in your `stdout`.
 
 **Usage:**
 ```
@@ -39,17 +47,18 @@ Arguments:
   <INPUT>  The .pbd definition file
 
 Options:
-  -q, --quiet          Do not print JSON into stdout
-  -l, --loud           Do print JSON into stdout, overrides -q
-  -o, --out <OUT>      Output - only .rs, .json files supported. Implies -q. Allows multiple occurrences.
-  -c, --compat <JSON>  Check binary compatibility with the previous version (json file). Aborts if they are not compatible.
-  -d, --dry-run        Do not write anything to the filesystem.
-      --verbose        Be verbose. Will print a lot of unnecessary things.
-      --no-resolve     Skip `@resolve`-ing aliases.
-      --no-docs        Do not generate doc-comments. Doesn't affect json.
-      --rust:tokio     Generate async rust code for tokio. Affects only `.rs` files from --out.
-  -h, --help           Print help
-  -V, --version        Print version
+  -q, --quiet                 Do not print JSON into stdout
+  -l, --loud                  Do print JSON into stdout, overrides -q
+  -o, --out <OUT>             Output - only .rs, .json files supported. Implies -q. Allows multiple occurrences.
+  -c, --compat <JSON>         Check binary compatibility with the previous version (json file). Aborts if they are not compatible.
+  -d, --dry-run               Do not write anything to the filesystem.
+      --verbose               Be verbose. Will print a lot of unnecessary things.
+      --no-resolve            Skip `@resolve`-ing aliases.
+      --no-docs               Do not generate doc-comments. Doesn't affect json.
+      --rust:tokio            Generate async rust code for tokio. Affects only `.rs` files from --out.
+      --html:template <PATH>  Path to the template to be used to generate `.html` files.
+  -h, --help                  Print help
+  -V, --version               Print version
 ```
 
 ## Repository structure
