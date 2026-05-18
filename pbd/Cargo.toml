@@ -3,6 +3,9 @@ name = "pbd"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+strip = true
+
 [dependencies]
 clap = { version = "4.5.37", features = ["cargo"]}
 crc = "3.2.1"
