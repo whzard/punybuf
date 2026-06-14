@@ -19,3 +19,6 @@ path = "src/lib.rs"
 [[test]]
 name = "harness"
 harness = false
+
+[dev-dependencies]
+diff_json = "0.1.1"
