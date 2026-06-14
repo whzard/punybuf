@@ -212,7 +212,7 @@ fn run_test(file: impl AsRef<Path>, expected: Option<String>) -> Result<Option<S
 			panic!(
 				"json does not match:\n\
 				{BOLD}{YELLOW}expected:{NORMAL} {}\n\n\
-				{BOLD}{RED}     got:{NORMAL} {}\n\n\
+				{BOLD}{RED}got:{NORMAL} {}\n\n\
 				difference:\n{diff}",
 				expected.trim(), json_result.trim()
 			)
@@ -250,10 +250,10 @@ fn format_json_diffs(old_value: &str, new_value: &str) -> Option<String> {
 		};
 		writeln!(result, "{prefix} {}", diff.path).unwrap();
 		if let Some(val) = diff.old_value {
-			writeln!(result, "{RED}-  {}{NORMAL}", val).unwrap();
+			writeln!(result, "{RED}-   {}{NORMAL}", val).unwrap();
 		}
 		if let Some(val) = diff.new_value {
-			writeln!(result, "{GREEN}+  {}{NORMAL}", val).unwrap();
+			writeln!(result, "{GREEN}+   {}{NORMAL}", val).unwrap();
 		}
 		result.push('\n');
 	}
