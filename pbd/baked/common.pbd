@@ -140,7 +140,7 @@ String = Bytes
 
 #[
 	A map type. This isn't marked `@builtin`, but implementations may, for their
-	own convinience, allow to convert this type to their own `HashMap`
+	own convenience, allow to convert this type to their own `HashMap`
 	implementation. This conversion may fail, as this type enforces no rules
 	on the uniquness of the keys.
 
@@ -163,7 +163,7 @@ KeyPair<K, V> = {
 	operation finished processing.
 
 	Note that this is very different from the [`Void`](Void) type that means that
-	the reciever will never return any acknoledgement to the sender.
+	the reciever will never return any acknowledgement to the sender.
 ]
 @sealed
 Done = {}
@@ -171,7 +171,7 @@ Done = {}
 #[
 	A boolean value.
 
-	In practice, you should prefer using flag fields instead of this type.
+	In practice, flag fields are always preferred (they save space).
 ]
 Boolean = [
 	True, False
