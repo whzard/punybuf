@@ -531,6 +531,8 @@ pub trait PBCommand {
 mod libtest {
 	use std::time::{Duration, SystemTime};
 
+use crate::tokio::AsyncPBType;
+
 	const TEST_UINTS: &[u64] = &[
 		0, 32, 64, 127, 128, 129,
 		16511, 16512, 16513,
@@ -565,8 +567,8 @@ mod libtest {
 		use crate::tokio::{PBType, UInt};
 		for n in TEST_UINTS {
 			let mut v = vec![];
-			UInt(*n).serialize(&mut v).await.unwrap();
-			let same = UInt::deserialize_stream(&mut &v[..]).await.unwrap();
+			UInt(*n).serialize_async(&mut v).await.unwrap();
+			let same = UInt::deserialize_async(&mut &v[..]).await.unwrap();
 			assert_eq!(same.0, *n);
 		}
 	}

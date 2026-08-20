@@ -65,8 +65,10 @@ macro_rules! appendf {
 	};
 }
 
-fn deserialize_suffix(stream: bool) -> &'static str {
-	if stream {
+fn deserialize_suffix(stream: bool, is_async: bool) -> &'static str {
+	if is_async {
+		"_async"
+	} else if stream {
 		"_stream"
 	} else {
 		""
@@ -205,33 +207,53 @@ impl<'def> RustCodegen<'def> {
 		let mut path = HashSet::new();
 		self.needs_lifetime_with_context(name, layer, &mut path)
 	}
+	/// Remnant from a previous version, always
+	/// returns `"fn"`.
 	fn get_fn(&self) -> &str {
-		if self.use_tokio {
+		if false {
 			"async fn"
 		} else {
 			"fn"
 		}
 	}
+	/// Remnant from a previous version, always
+	/// returns `"io::Write"`.
 	fn write(&self) -> &str {
-		if self.use_tokio {
+		if false {
 			"AsyncWriteExt + Unpin + Send"
 		} else {
 			"io::Write"
 		}
 	}
+	/// Always returns `"AsyncWriteExt + Unpin + Send"`.
+	fn write_async(&self) -> &str {
+		"AsyncWriteExt + Unpin + Send"
+	}
+	/// Remnant from a previous version, always
+	/// returns `"io::Read"`.
 	fn read(&self) -> &str {
-		if self.use_tokio {
+		if false {
 			"AsyncReadExt + Unpin + Send"
 		} else {
 			"io::Read"
 		}
 	}
+	/// Always returns `"AsyncReadExt + Unpin + Send"`
+	fn read_async(&self) -> &str {
+		"AsyncReadExt + Unpin + Send"
+	}
+	/// Remnant from a previous version, always
+	/// returns `"read_exact({})?"`.
 	fn read_exact(&self, arg: &str) -> String {
-		if self.use_tokio {
+		if false {
 			format!("read_exact({}).await?", arg)
 		} else {
 			format!("read_exact({})?", arg)
 		}
+	}
+	/// Always returns `"read_exact({}).await?"`.
+	fn read_exact_async(&self, arg: &str) -> String {
+		format!("read_exact({}).await?", arg)
 	}
 	/* /// Gets a fully qualified reference name
 	fn get_ref(&self, refr: &PBTypeRef) -> String {
@@ -345,12 +367,12 @@ impl<'def> RustCodegen<'def> {
 		}
 		result
 	}
+	/// Must not be used within async code
 	fn get_type_impl_generics(&self, tp: &PBTypeDef) -> String {
 		// we always need the lifetime here whether or not
 		// the actual type needs it, since
 		// we're referencing PBType and it always needs a
 		// lifetime
-		// let needs_lifetime = self.needs_lifetime(tp.get_name().0, *tp.get_layer());
 		if tp.get_generics().0.is_empty() {
 			self.gen_lifetime_generics_if(true)
 		} else {
@@ -363,6 +385,32 @@ impl<'def> RustCodegen<'def> {
 					result.push_str(", ");
 				}
 				result.push_str(&format!("{}: PBType<'x>", g));
+			}
+			result.push('>');
+			result
+		}
+	}
+	/// Must not be used within async code
+	fn get_type_impl_generics_async(&self, tp: &PBTypeDef) -> String {
+		// we always need the lifetime here whether or not
+		// the actual type needs it, since
+		// we're referencing PBType and it always needs a
+		// lifetime
+		let needs_lifetime = self.needs_lifetime(
+			tp.get_name().0, *tp.get_layer()
+		);
+		if tp.get_generics().0.is_empty() {
+			self.gen_lifetime_generics_if(needs_lifetime)
+		} else {
+			let mut result = String::new();
+			let generics = tp.get_generics().0;
+			result.push('<');
+			result.push_str(&self.gen_lifetime_if(needs_lifetime, !generics.is_empty()));
+			for (i, g) in generics.iter().enumerate() {
+				if i != 0 {
+					result.push_str(", ");
+				}
+				result.push_str(&format!("{g}: AsyncPBType"));
 			}
 			result.push('>');
 			result
@@ -382,13 +430,6 @@ impl<'def> RustCodegen<'def> {
 			format!("{}Error", cmd.name)
 		} else {
 			format!("{}Layer{}Error", cmd.name, cmd.layer)
-		}
-	}
-	fn maybe_await(&self) -> &str {
-		if self.use_tokio {
-			".await"
-		} else {
-			""
 		}
 	}
 	fn command_needs_lifetime(&self, cmd: &PBCommandDef) -> bool {
@@ -478,16 +519,34 @@ impl<'def> RustCodegen<'def> {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
-			appendf!(self, "            Self::{}(c) => c.serialize_self(r){},\n", self.get_command_name(cmd), self.maybe_await());
+			appendf!(self, "            Self::{}(c) => c.serialize_self(r),\n", self.get_command_name(cmd));
 		}
 		appendf!(self, "        }}\n"); // match
 		appendf!(self, "    }}\n"); // fn serialize_self()
 		appendf!(self, "}}\n\n"); // impl PBCommand
-	
+
+		if self.use_tokio {
+			appendf!(self, "impl{} AsyncPBCommand for Command{} {{\n",
+				self.gen_lifetime_generics_if(need_generics),
+				self.gen_lifetime_generics_if(need_generics)
+			);
+			appendf!(self, "    async fn serialize_self_async<R: {}>(&self, r: &mut R) -> Result<(), io::Error> {{\n", self.write_async());
+			appendf!(self, "        match self {{\n");
+			for cmd in &self.def.commands {
+				if cmd.attrs.contains_key("@rust:ignore") {
+					continue;
+				}
+				appendf!(self, "            Self::{}(c) => c.serialize_self_async(r).await,\n", self.get_command_name(cmd));
+			}
+			appendf!(self, "        }}\n"); // match
+			appendf!(self, "    }}\n"); // fn serialize_self_async()
+			appendf!(self, "}}\n\n"); // impl AsyncPBCommand
+		}
+
 		appendf!(self, "impl{} Command{} {{\n\n",
 			self.gen_lifetime_generics_if(need_generics),
 			self.gen_lifetime_generics_if(need_generics)
-		); // impl Command
+		);
 		appendf!(self, "    /// Reads both the ID of the command and its value\n");
 		appendf!(self, "    pub {} deserialize_stream<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 		appendf!(self, "        let mut id = [0; 4];\n");
@@ -499,36 +558,57 @@ impl<'def> RustCodegen<'def> {
 				continue;
 			}
 			appendf!(self,
-				"            {} => Self::{}({}::deserialize_stream(r){}?),\n",
-				cmd.command_id, self.get_command_name(cmd), self.get_command_name(cmd), self.maybe_await()
+				"            {} => Self::{}({}::deserialize_stream(r)?),\n",
+				cmd.command_id, self.get_command_name(cmd), self.get_command_name(cmd)
 			);
 		}
 		appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
 		appendf!(self, "\n");
 		appendf!(self, "        }})\n"); // match
 		appendf!(self, "    }}\n"); // fn deserialize_stream
-		if !self.use_tokio {
-			appendf!(self, "    pub fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
-			appendf!(self, "        let (a, b) = r.split_at_checked(4)\n");
-			appendf!(self, "            .ok_or(io::Error::new(io::ErrorKind::UnexpectedEof, \"buffer too small\"))?;\n");
-			appendf!(self, "        let arr = a.try_into().unwrap(); // has to be 4 bytes\n");
-			appendf!(self, "        let id = u32::from_be_bytes(arr);\n");
-			appendf!(self, "        *r = b;\n");
+		appendf!(self, "    pub fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+		appendf!(self, "        let (a, b) = r.split_at_checked(4)\n");
+		appendf!(self, "            .ok_or(io::Error::new(io::ErrorKind::UnexpectedEof, \"buffer too small\"))?;\n");
+		appendf!(self, "        let arr = a.try_into().unwrap(); // has to be 4 bytes\n");
+		appendf!(self, "        let id = u32::from_be_bytes(arr);\n");
+		appendf!(self, "        *r = b;\n");
+		appendf!(self, "        Ok(match id {{\n");
+		for cmd in &self.def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self,
+				"            {} => Self::{}({}::deserialize_stream(r)?),\n",
+				cmd.command_id, self.get_command_name(cmd), self.get_command_name(cmd)
+			);
+		}
+		appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
+		appendf!(self, "\n");
+		appendf!(self, "        }})\n"); // match
+		appendf!(self, "    }}\n"); // fn deserialize
+
+		if self.use_tokio {
+			appendf!(self, "    /// Reads both the ID of the command and its value\n");
+			appendf!(self, "    pub async fn deserialize_async<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.read_async());
+			appendf!(self, "        let mut id = [0; 4];\n");
+			appendf!(self, "        r.{};\n", self.read_exact_async("&mut id"));
+			appendf!(self, "        let id = u32::from_be_bytes(id);\n");
 			appendf!(self, "        Ok(match id {{\n");
 			for cmd in &self.def.commands {
 				if cmd.attrs.contains_key("@rust:ignore") {
 					continue;
 				}
 				appendf!(self,
-					"            {} => Self::{}({}::deserialize_stream(r){}?),\n",
-					cmd.command_id, self.get_command_name(cmd), self.get_command_name(cmd), self.maybe_await()
+					"            {} => Self::{}({}::deserialize_async(r).await?),\n",
+					cmd.command_id, self.get_command_name(cmd), self.get_command_name(cmd)
 				);
 			}
 			appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
 			appendf!(self, "\n");
 			appendf!(self, "        }})\n"); // match
-			appendf!(self, "    }}\n"); // fn deserialize_stream
+			appendf!(self, "    }}\n"); // fn deserialize_async
 		}
+		
 		appendf!(self, "}}\n\n"); // impl Command
 
 
@@ -552,20 +632,38 @@ impl<'def> RustCodegen<'def> {
 			self.gen_lifetime_generics_if(ret_needs_lifetime)
 		);
 
-		appendf!(self, "    pub {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
+		appendf!(self, "    pub {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n",
+			self.get_fn(), self.write());
 		appendf!(self, "        match self {{\n");
 		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
 			appendf!(self,
-				"            Self::{}(c) => c.serialize(w){}?,\n",
-				self.get_command_name(cmd), self.maybe_await()
+				"            Self::{}(c) => c.serialize(w)?,\n",
+				self.get_command_name(cmd)
 			);
 		}
 		appendf!(self, "        }}\n"); // match
 		appendf!(self, "        Ok(())\n");
 		appendf!(self, "    }}\n"); // fn serialize
+
+		if self.use_tokio {
+			appendf!(self, "    pub async fn serialize_async<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.write_async());
+			appendf!(self, "        match self {{\n");
+			for cmd in &self.def.commands {
+				if cmd.attrs.contains_key("@rust:ignore") {
+					continue;
+				}
+				appendf!(self,
+					"            Self::{}(c) => c.serialize_async(w).await?,\n",
+					self.get_command_name(cmd)
+				);
+			}
+			appendf!(self, "        }}\n"); // match
+			appendf!(self, "        Ok(())\n");
+			appendf!(self, "    }}\n"); // fn serialize_async
+		}
 
 		appendf!(self, "    pub {} deserialize_return_stream<R: {}>(id: u32, r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 		appendf!(self, "        Ok(match id {{\n");
@@ -574,31 +672,50 @@ impl<'def> RustCodegen<'def> {
 				continue;
 			}
 			appendf!(self,
-				"            {} => Self::{}({}::deserialize_stream(r){}?),\n",
-				cmd.command_id, self.get_command_name(cmd), self.gen_reference(&cmd.ret, true), self.maybe_await()
+				"            {} => Self::{}({}::deserialize_stream(r)?),\n",
+				cmd.command_id, self.get_command_name(cmd),
+				self.gen_reference(&cmd.ret, true)
 			);
 		}
 		appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
 		appendf!(self, "\n");
 		appendf!(self, "        }})\n"); // match
 		appendf!(self, "    }}\n"); // fn deserialize_return_stream
-		if !self.use_tokio {
-			appendf!(self, "    pub fn deserialize_return<'a: 'x>(id: u32, r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+
+		appendf!(self, "    pub fn deserialize_return<'a: 'x>(id: u32, r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+		appendf!(self, "        Ok(match id {{\n");
+		for cmd in &self.def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self,
+				"            {} => Self::{}({}::deserialize(r)?),\n",
+				cmd.command_id, self.get_command_name(cmd), self.gen_reference(&cmd.ret, true)
+			);
+		}
+		appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
+		appendf!(self, "\n");
+		appendf!(self, "        }})\n"); // match
+		appendf!(self, "    }}\n"); // fn deserialize_return
+
+		if self.use_tokio {
+			appendf!(self, "    pub async fn deserialize_return_async<R: {}>(id: u32, r: &mut R) -> io::Result<Self> {{\n", self.read_async());
 			appendf!(self, "        Ok(match id {{\n");
 			for cmd in &self.def.commands {
 				if cmd.attrs.contains_key("@rust:ignore") {
 					continue;
 				}
 				appendf!(self,
-					"            {} => Self::{}({}::deserialize(r){}?),\n",
-					cmd.command_id, self.get_command_name(cmd), self.gen_reference(&cmd.ret, true), self.maybe_await()
+					"            {} => Self::{}({}::deserialize_async(r).await?),\n",
+					cmd.command_id, self.get_command_name(cmd), self.gen_reference(&cmd.ret, true)
 				);
 			}
 			appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
 			appendf!(self, "\n");
 			appendf!(self, "        }})\n"); // match
-			appendf!(self, "    }}\n"); // fn deserialize_return
+			appendf!(self, "    }}\n"); // fn deserialize_return_async
 		}
+
 		appendf!(self, "}}\n\n"); // impl CommandReturn
 
 		appendf!(self, "/// This enum contains all possible command error types in the RPC definition.\n");
@@ -623,13 +740,30 @@ impl<'def> RustCodegen<'def> {
 				continue;
 			}
 			appendf!(self,
-				"            Self::{}(c) => c.serialize(w){}?,\n",
-				self.get_command_name(cmd), self.maybe_await()
+				"            Self::{}(c) => c.serialize(w)?,\n",
+				self.get_command_name(cmd)
 			);
 		}
 		appendf!(self, "        }}\n"); // match
 		appendf!(self, "        Ok(())\n");
 		appendf!(self, "    }}\n"); // fn serialize
+
+		if self.use_tokio {
+			appendf!(self, "    pub async fn serialize_async<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.write_async());
+			appendf!(self, "        match self {{\n");
+			for cmd in &self.def.commands {
+				if cmd.attrs.contains_key("@rust:ignore") {
+					continue;
+				}
+				appendf!(self,
+					"            Self::{}(c) => c.serialize_async(w).await?,\n",
+					self.get_command_name(cmd)
+				);
+			}
+			appendf!(self, "        }}\n"); // match
+			appendf!(self, "        Ok(())\n");
+			appendf!(self, "    }}\n"); // fn serialize_async
+		}
 
 		appendf!(self, "    pub {} deserialize_error_stream<R: {}>(id: u32, r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 		appendf!(self, "        Ok(match id {{\n");
@@ -638,8 +772,8 @@ impl<'def> RustCodegen<'def> {
 				continue;
 			}
 			appendf!(self,
-				"            {} => Self::{}({}::deserialize_stream(r){}?),\n",
-				cmd.command_id, self.get_command_name(cmd), self.get_command_err(cmd), self.maybe_await()
+				"            {} => Self::{}({}::deserialize_stream(r)?),\n",
+				cmd.command_id, self.get_command_name(cmd), self.get_command_err(cmd)
 			);
 		}
 		appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
@@ -647,23 +781,40 @@ impl<'def> RustCodegen<'def> {
 		appendf!(self, "        }})\n"); // match
 		appendf!(self, "    }}\n"); // fn deserialize_error_stream
 
-		if !self.use_tokio {
-			appendf!(self, "    pub fn deserialize_error<'a: 'x>(id: u32, r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+		appendf!(self, "    pub fn deserialize_error<'a: 'x>(id: u32, r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+		appendf!(self, "        Ok(match id {{\n");
+		for cmd in &self.def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self,
+				"            {} => Self::{}({}::deserialize(r)?),\n",
+				cmd.command_id, self.get_command_name(cmd), self.get_command_err(cmd)
+			);
+		}
+		appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
+		appendf!(self, "\n");
+		appendf!(self, "        }})\n"); // match
+		appendf!(self, "    }}\n"); // fn deserialize_error
+
+		if self.use_tokio {
+			appendf!(self, "    pub async fn deserialize_error_async<R: {}>(id: u32, r: &mut R) -> io::Result<Self> {{\n", self.read_async());
 			appendf!(self, "        Ok(match id {{\n");
 			for cmd in &self.def.commands {
 				if cmd.attrs.contains_key("@rust:ignore") {
 					continue;
 				}
 				appendf!(self,
-					"            {} => Self::{}({}::deserialize(r){}?),\n",
-					cmd.command_id, self.get_command_name(cmd), self.get_command_err(cmd), self.maybe_await()
+					"            {} => Self::{}({}::deserialize_async(r).await?),\n",
+					cmd.command_id, self.get_command_name(cmd), self.get_command_err(cmd)
 				);
 			}
 			appendf!(self, r#"            _ => Err(io::Error::other("Invalid or unsupported command ID"))?"#);
 			appendf!(self, "\n");
 			appendf!(self, "        }})\n"); // match
-			appendf!(self, "    }}\n"); // fn deserialize_error
+			appendf!(self, "    }}\n"); // fn deserialize_error_stream
 		}
+
 		appendf!(self, "}}\n\n"); // impl CommandError
 	}
 	fn gen_fields(&mut self, fields: &Vec<PBField>) {
@@ -697,10 +848,13 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, ",\n")
 		}
 	}
-	/* fn gen_flags_type(&self, flags_type: &PBTypeRef) -> &str {
-		
-	} */
-	fn gen_serialize_fields(&mut self, fields: &Vec<PBField>, extensible: bool) {
+	fn gen_serialize_fields(&mut self, fields: &Vec<PBField>, extensible: bool, is_async: bool) {
+		macro_rules! maybe_await {
+			() => { if is_async { ".await" } else { "" } }
+		}
+		macro_rules! suffix {
+			() => { if is_async { "_async" } else { "" } }
+		}
 		let mut has_extensions = false;
 		let mut has_extension_flags = false;
 		for field in fields {
@@ -723,7 +877,7 @@ impl<'def> RustCodegen<'def> {
 						appendf!(self, "        if self.{} {{ flags |= 1 << {i} }}\n", flag.name);
 					}
 				}
-				appendf!(self, "        flags.serialize(w){}?;\n", self.maybe_await());
+				appendf!(self, "        flags.serialize{}(w){}?;\n", suffix!(), maybe_await!());
 				for flag in flags {
 					if flag.value.is_none() { continue }
 					if flag.attrs.contains_key("@extension") {
@@ -732,11 +886,11 @@ impl<'def> RustCodegen<'def> {
 					}
 
 					appendf!(self, "        if let Some(ref v) = self.{} {{\n", flag.name);
-					appendf!(self, "            v.serialize(w){}?;\n", self.maybe_await());
+					appendf!(self, "            v.serialize{}(w){}?;\n", suffix!(), maybe_await!());
 					appendf!(self, "        }}\n");
 				}
 			} else {
-				appendf!(self, "        self.{}.serialize(w){}?;\n", field.name, self.maybe_await());
+				appendf!(self, "        self.{}.serialize{}(w){}?;\n", field.name, suffix!(), maybe_await!());
 			}
 		}
 		if extensible && (has_extensions || has_extension_flags) {
@@ -755,11 +909,11 @@ impl<'def> RustCodegen<'def> {
 					}
 
 					appendf!(self, "        if let Some(ref v) = self.{} {{\n", flag.name);
-					appendf!(self, "            v.serialize(w){}?;\n", self.maybe_await());
+					appendf!(self, "            v.serialize{}(w){}?;\n", suffix!(), maybe_await!());
 					appendf!(self, "        }}\n");
 				}
 			}
-			appendf!(self, "        bytes.serialize(real_w){}?;\n", self.maybe_await());
+			appendf!(self, "        bytes.serialize{}(real_w){}?;\n", suffix!(), maybe_await!());
 		} else if extensible && has_extension_flags {
 			let extension_flags_field = fields.iter().find(
 				|f| f.attrs.contains_key("@extension_flags")
@@ -786,25 +940,28 @@ impl<'def> RustCodegen<'def> {
 					);
 				}
 			}
-			appendf!(self, "        flags.serialize(w){}?;\n", self.maybe_await());
+			appendf!(self, "        flags.serialize{}(w){}?;\n", suffix!(), maybe_await!());
 			for flag in flags {
 				if flag.value.is_none() { continue }
 				appendf!(self, "        if let Some(ref v) = self.{} {{\n", flag.name);
-				appendf!(self, "            v.serialize(w){}?;\n", self.maybe_await());
+				appendf!(self, "            v.serialize{}(w){}?;\n", suffix!(), maybe_await!());
 				appendf!(self, "        }}\n");
-				appendf!(self, "        bytes.serialize(real_w){}?;\n", self.maybe_await());
+				appendf!(self, "        bytes.serialize{}(real_w){}?;\n", suffix!(), maybe_await!());
 			}
 		} else if extensible {
-			appendf!(self, "        UInt(0).serialize(w){}?;\n", self.maybe_await());
+			appendf!(self, "        UInt(0).serialize{}(w){}?;\n", suffix!(), maybe_await!());
 		}
 	}
-	fn gen_deserialize_fields(&mut self, fields: &Vec<PBField>, extensible: bool, stream: bool) {
-		let stream = deserialize_suffix(stream);
+	fn gen_deserialize_fields(&mut self, fields: &Vec<PBField>, extensible: bool, stream: bool, is_async: bool) {
+		macro_rules! maybe_await {
+			() => { if is_async { ".await" } else { "" } }
+		}
+		let suffix = deserialize_suffix(stream, is_async);
 		for field in fields {
 			if field.attrs.contains_key("@extension_flags") { continue }
-			appendf!(self, "        let field_{} = {}::deserialize{stream}(r){}?;\n",
+			appendf!(self, "        let field_{} = {}::deserialize{suffix}(r){}?;\n",
 				field.name, self.gen_reference(&field.value, true),
-				self.maybe_await()
+				maybe_await!()
 			);
 			if let Some(flags) = &field.flags {
 				for (i, flag) in flags.iter().enumerate() {
@@ -817,8 +974,8 @@ impl<'def> RustCodegen<'def> {
 							flag.name, field.name
 						);
 						appendf!(self,
-							"            Some({}::deserialize{stream}(r){}?)\n",
-							self.gen_reference(val, true), self.maybe_await()
+							"            Some({}::deserialize{suffix}(r){}?)\n",
+							self.gen_reference(val, true), maybe_await!()
 						);
 						appendf!(self,
 							"        }} else {{ None }};\n"
@@ -833,7 +990,7 @@ impl<'def> RustCodegen<'def> {
 			}
 		}
 		if extensible {
-			appendf!(self, "        let mut _extension_bytes = Bytes::deserialize{stream}(r){}?;\n", self.maybe_await());
+			appendf!(self, "        let mut _extension_bytes = Bytes::deserialize{suffix}(r){}?;\n", maybe_await!());
 			appendf!(self, "        let _extension_reader = &mut &_extension_bytes.0[..];\n");
 			for field in fields {
 				let Some(flags) = &field.flags else { continue };
@@ -849,8 +1006,8 @@ impl<'def> RustCodegen<'def> {
 							flag.name, field.name
 						);
 						appendf!(self,
-							"            Some({}::deserialize{stream}(_extension_reader){}?)\n",
-							self.gen_reference(val, true), self.maybe_await()
+							"            Some({}::deserialize{suffix}(_extension_reader){}?)\n",
+							self.gen_reference(val, true), maybe_await!()
 						);
 						appendf!(self,
 							"        }} else {{ None }};\n"
@@ -868,9 +1025,9 @@ impl<'def> RustCodegen<'def> {
 			if let Some(extension_flags_field) = fields.iter()
 				.find(|f| f.attrs.contains_key("@extension_flags"))
 			{
-				appendf!(self, "        let field_{} = {}::deserialize{stream}(_extension_reader){}?;\n",
+				appendf!(self, "        let field_{} = {}::deserialize{suffix}(_extension_reader){}?;\n",
 					extension_flags_field.name, self.gen_reference(&extension_flags_field.value, true),
-					self.maybe_await()
+					maybe_await!()
 				);
 				for (i, flag) in extension_flags_field.flags.as_ref()
 					.expect("validator error: @extension_flags must have flags")
@@ -881,8 +1038,8 @@ impl<'def> RustCodegen<'def> {
 							"        let flag_{} = if (field_{} & (1 << {i})) != 0 {{\n",
 							flag.name, extension_flags_field.name);
 						appendf!(self,
-							"            Some({}::deserialize{stream}(_extension_reader){}?)\n",
-							self.gen_reference(val, true), self.maybe_await());
+							"            Some({}::deserialize{suffix}(_extension_reader){}?)\n",
+							self.gen_reference(val, true), maybe_await!());
 						appendf!(self,
 							"        }} else {{ None }};\n");
 
@@ -907,14 +1064,20 @@ impl<'def> RustCodegen<'def> {
 		}
 		appendf!(self, "        }})\n");
 	}
-	fn gen_serialize_variants(&mut self, variants: &Vec<PBEnumVariant>) {
+	fn gen_serialize_variants(&mut self, variants: &Vec<PBEnumVariant>, is_async: bool) {
+		macro_rules! maybe_await {
+			() => { if is_async { ".await" } else { "" } }
+		}
+		macro_rules! suffix {
+			() => { if is_async { "_async" } else { "" } }
+		}
 		for variant in variants {
 			appendf!(self, "            Self::{}", variant.name);
 			if variant.value.is_some() {
 				appendf!(self, "(value)");
 			}
 			appendf!(self, " => {{\n");
-			appendf!(self, "                {}u8.serialize(w){}?;\n", variant.discriminant, self.maybe_await());
+			appendf!(self, "                {}u8.serialize{}(w){}?;\n", variant.discriminant, suffix!(), maybe_await!());
 			if variant.attrs.contains_key("@extension") {
 				if variant.value.is_some() {
 					appendf!(self, "                // Extension:\n");
@@ -923,20 +1086,23 @@ impl<'def> RustCodegen<'def> {
 					appendf!(self, "                let w = &mut bytes.0;\n");
 				} else {
 					appendf!(self, "                // Skipped extension:\n");
-					appendf!(self, "                UInt(0).serialize(w){}?;\n", self.maybe_await());
+					appendf!(self, "                UInt(0).serialize{}(w){}?;\n", suffix!(), maybe_await!());
 				}
 			}
 			if let Some(_) = &variant.value {
-				appendf!(self, "                value.serialize(w){}?;\n", self.maybe_await());
+				appendf!(self, "                value.serialize{}(w){}?;\n", suffix!(), maybe_await!());
 			}
 			if variant.attrs.contains_key("@extension") && variant.value.is_some() {
-				appendf!(self, "                bytes.serialize(real_w){}?;\n", self.maybe_await());
+				appendf!(self, "                bytes.serialize{}(real_w){}?;\n", suffix!(), maybe_await!());
 			}
 			appendf!(self, "            }}\n");
 		}
 	}
-	fn gen_deserialize_variants(&mut self, variants: &Vec<PBEnumVariant>, stream: bool) {
-		let stream = deserialize_suffix(stream);
+	fn gen_deserialize_variants(&mut self, variants: &Vec<PBEnumVariant>, stream: bool, is_async: bool) {
+		macro_rules! maybe_await {
+			() => { if is_async { ".await" } else { "" } }
+		}
+		let suffix = deserialize_suffix(stream, is_async);
 		let mut default_variant = None;
 		for variant in variants {
 			if variant.attrs.contains_key("@default") {
@@ -944,10 +1110,11 @@ impl<'def> RustCodegen<'def> {
 			}
 			appendf!(self, "            {} => {{\n", variant.discriminant);
 			if variant.attrs.contains_key("@extension") {
-				appendf!(self, "                _ = UInt::deserialize{stream}(r);\n");
+				appendf!(self, "                _ = UInt::deserialize{suffix}(r){};\n", maybe_await!());
 			}
 			if let Some(refr) = &variant.value {
-				appendf!(self, "                Self::{}({}::deserialize{stream}(r){}?)\n", variant.name, self.gen_reference(refr, true), self.maybe_await());
+				appendf!(self, "                Self::{}({}::deserialize{suffix}(r){}?)\n",
+					variant.name, self.gen_reference(refr, true), maybe_await!());
 			} else {
 				appendf!(self, "                Self::{}\n", variant.name);
 			}
@@ -955,7 +1122,7 @@ impl<'def> RustCodegen<'def> {
 		}
 		if let Some(default_variant) = default_variant {
 			appendf!(self, "            _ => {{\n");
-			appendf!(self, "                _ = Bytes::deserialize{stream}(r){}?;\n", self.maybe_await());
+			appendf!(self, "                _ = Bytes::deserialize{suffix}(r){}?;\n", maybe_await!());
 			appendf!(self, "                Self::{}\n", default_variant.name);
 			appendf!(self, "            }}\n");
 		} else {
@@ -1026,25 +1193,49 @@ impl<'def> RustCodegen<'def> {
 					appendf!(self, "        Ok(Self)\n");
 				},
 				PBCommandArg::Ref(refr) => {
-					appendf!(self, "        Self({}::deserialize_stream(r){}?)\n", self.gen_reference(refr, true), self.maybe_await());
+					appendf!(self, "        Self({}::deserialize_stream(r)?)\n", self.gen_reference(refr, true));
 				},
-				PBCommandArg::Struct { fields } => self.gen_deserialize_fields(fields, !cmd.attrs.contains_key("@sealed"), true),
+				PBCommandArg::Struct { fields } =>
+					self.gen_deserialize_fields(fields, !cmd.attrs.contains_key("@sealed"), true, false),
 			}
 			appendf!(self, "    }}\n"); // fn deserialize_stream
-			if !self.use_tokio {
-				appendf!(self, "    fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+			appendf!(self, "    fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+			match &cmd.argument {
+				PBCommandArg::None => {
+					appendf!(self, "        Ok(Self)\n");
+				},
+				PBCommandArg::Ref(refr) => {
+					appendf!(self, "        Self({}::deserialize(r)?)\n", self.gen_reference(refr, true));
+				},
+				PBCommandArg::Struct { fields } =>
+					self.gen_deserialize_fields(fields, !cmd.attrs.contains_key("@sealed"), false, false),
+			}
+			appendf!(self, "    }}\n"); // fn deserialize
+			appendf!(self, "}}\n"); // impl PBCommandExt
+
+			if self.use_tokio {
+				appendf!(self, "impl{} AsyncPBCommandExt for {} {{\n",
+					self.gen_lifetime_generics_if(self.command_needs_lifetime(cmd)),
+					self.gen_command_name(cmd)
+				);
+				self.lifetime = "'static";
+				appendf!(self, "    type AsyncError = {};\n", self.gen_command_err(cmd));
+				appendf!(self, "    type AsyncReturn = {};\n", self.gen_reference(&cmd.ret, false));
+				self.lifetime = "'x";
+				appendf!(self, "    async fn deserialize_async<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.read_async());
 				match &cmd.argument {
 					PBCommandArg::None => {
 						appendf!(self, "        Ok(Self)\n");
 					},
 					PBCommandArg::Ref(refr) => {
-						appendf!(self, "        Self({}::deserialize(r)?)\n", self.gen_reference(refr, true));
+						appendf!(self, "        Self({}::deserialize_async(r).await?)\n", self.gen_reference(refr, true));
 					},
-					PBCommandArg::Struct { fields } => self.gen_deserialize_fields(fields, !cmd.attrs.contains_key("@sealed"), false),
+					PBCommandArg::Struct { fields } =>
+						self.gen_deserialize_fields(fields, !cmd.attrs.contains_key("@sealed"), true, true),
 				}
-				appendf!(self, "    }}\n"); // fn deserialize
+				appendf!(self, "    }}\n"); // fn deserialize_stream
+				appendf!(self, "}}\n"); // impl AsyncPBCommandExt
 			}
-			appendf!(self, "}}\n"); // impl PBCommandExt
 
 			appendf!(self, "impl{} PBCommand for {} {{\n",
 				self.gen_lifetime_generics_if(cmd_needs_lifetime),
@@ -1068,13 +1259,34 @@ impl<'def> RustCodegen<'def> {
 			match &cmd.argument {
 				PBCommandArg::None => {},
 				PBCommandArg::Ref(_) => {
-					appendf!(self, "        self.0.serialize(w){}?;\n", self.maybe_await());
+					appendf!(self, "        self.0.serialize(w)?;\n");
 				},
-				PBCommandArg::Struct { fields } => self.gen_serialize_fields(fields, !cmd.attrs.contains_key("@sealed")),
+				PBCommandArg::Struct { fields } =>
+					self.gen_serialize_fields(fields, !cmd.attrs.contains_key("@sealed"), false),
 			}
 			appendf!(self, "        Ok(())\n");
 			appendf!(self, "    }}\n"); // serialize_self
 			appendf!(self, "}}\n\n"); // impl PBCommand
+
+			
+			if self.use_tokio {
+				appendf!(self, "impl{} AsyncPBCommand for {} {{\n",
+					self.gen_lifetime_generics_if(cmd_needs_lifetime),
+					self.gen_command_name(cmd)
+				);
+				appendf!(self, "    async fn serialize_self_async<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.write_async());
+				match &cmd.argument {
+					PBCommandArg::None => {},
+					PBCommandArg::Ref(_) => {
+						appendf!(self, "        self.0.serialize_async(w).await?;\n");
+					},
+					PBCommandArg::Struct { fields } =>
+						self.gen_serialize_fields(fields, !cmd.attrs.contains_key("@sealed"), true),
+				}
+				appendf!(self, "        Ok(())\n");
+				appendf!(self, "    }}\n"); // serialize_self_async
+				appendf!(self, "}}\n\n"); // impl PBCommand
+			}
 
 			appendf!(self, "#[derive(Debug, Clone)]\n");
 			appendf!(self, "pub enum {} {{\n", self.gen_command_err(cmd));
@@ -1087,28 +1299,47 @@ impl<'def> RustCodegen<'def> {
 			);
 			appendf!(self, "    {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
 			appendf!(self, "        match self {{\n");
-			appendf!(self, "            Self::UnexpectedError(x) => {{ 0u8.serialize(w){}?; x.serialize(w){}?; }}\n", self.maybe_await(), self.maybe_await());
-			self.gen_serialize_variants(&cmd.err);
+			appendf!(self, "            Self::UnexpectedError(x) => {{ 0u8.serialize(w)?; x.serialize(w)?; }}\n");
+			self.gen_serialize_variants(&cmd.err, false);
 			appendf!(self, "        }}\n"); // match
 			appendf!(self, "        Ok(())\n");
 			appendf!(self, "    }}\n"); // fn serialize
 			appendf!(self, "    {} deserialize_stream<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
-			appendf!(self, "        let discriminant = u8::deserialize_stream(r){}?;\n", self.maybe_await());
+			appendf!(self, "        let discriminant = u8::deserialize_stream(r)?;\n");
 			appendf!(self, "        Ok(match discriminant {{\n");
-			appendf!(self, "            0 => {{ Self::UnexpectedError(Cow::deserialize_stream(r){}?) }}\n", self.maybe_await());
-			self.gen_deserialize_variants(&cmd.err, true);
+			appendf!(self, "            0 => {{ Self::UnexpectedError(Cow::deserialize_stream(r)?) }}\n");
+			self.gen_deserialize_variants(&cmd.err, true, false);
 			appendf!(self, "        }})\n"); // match
 			appendf!(self, "    }}\n"); // fn deserialize_stream
-			if !self.use_tokio {
-				appendf!(self, "    fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
-				appendf!(self, "        let discriminant = u8::deserialize(r){}?;\n", self.maybe_await());
-				appendf!(self, "        Ok(match discriminant {{\n");
-				appendf!(self, "            0 => {{ Self::UnexpectedError(Cow::deserialize(r){}?) }}\n", self.maybe_await());
-				self.gen_deserialize_variants(&cmd.err, false);
-				appendf!(self, "        }})\n"); // match
-				appendf!(self, "    }}\n"); // fn deserialize
-			}
+			appendf!(self, "    fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+			appendf!(self, "        let discriminant = u8::deserialize(r)?;\n");
+			appendf!(self, "        Ok(match discriminant {{\n");
+			appendf!(self, "            0 => {{ Self::UnexpectedError(Cow::deserialize(r)?) }}\n");
+			self.gen_deserialize_variants(&cmd.err, false, false);
+			appendf!(self, "        }})\n"); // match
+			appendf!(self, "    }}\n"); // fn deserialize
 			appendf!(self, "}}\n\n"); // impl PBType
+
+			if self.use_tokio {
+				appendf!(self, "impl<'x> AsyncPBType for {} {{\n",
+					self.gen_command_err(cmd)
+				);
+				appendf!(self, "    async fn serialize_async<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.write_async());
+				appendf!(self, "        match self {{\n");
+				appendf!(self, "            Self::UnexpectedError(x) => {{ 0u8.serialize_async(w).await?; x.serialize_async(w).await?; }}\n");
+				self.gen_serialize_variants(&cmd.err, true);
+				appendf!(self, "        }}\n"); // match
+				appendf!(self, "        Ok(())\n");
+				appendf!(self, "    }}\n"); // fn serialize_async
+				appendf!(self, "    async fn deserialize_async<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.read_async());
+				appendf!(self, "        let discriminant = u8::deserialize_async(r).await?;\n");
+				appendf!(self, "        Ok(match discriminant {{\n");
+				appendf!(self, "            0 => {{ Self::UnexpectedError(Cow::deserialize_async(r).await?) }}\n");
+				self.gen_deserialize_variants(&cmd.err, true, true);
+				appendf!(self, "        }})\n"); // match
+				appendf!(self, "    }}\n"); // fn deserialize_async
+				appendf!(self, "}}\n\n"); // impl PBType
+			}
 		}
 	}
 	fn gen_types(&mut self) {
@@ -1168,71 +1399,102 @@ impl<'def> RustCodegen<'def> {
 				}
 				appendf!(self, "    ] }}\n"); // fn attributes
 			}
-			// Currently, if the type references itself in any way,
-			// this line will fail to compile, with a message
-			// "cycle detected when computing type of ..."
-			// Async recursion isn't really supported in rust,
-			// possibly related to this issue:
-			// https://github.com/rust-lang/rust/issues/135062
-			// TODO: test this on the new solver
-			if self.use_tokio {
-				appendf!(self, "    // If you get an compile time error here saying\n");
-				appendf!(self, "    // \"cycle detected when computing type of...,\"\n");
-				appendf!(self, "    // that's because when using async, currently\n");
-				appendf!(self, "    // no cyclic types are supported at all. Sorry!\n");
-			}
 			appendf!(self, "    {} serialize<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.get_fn(), self.write());
 			match tp {
 				PBTypeDef::Struct { fields, attrs, .. } => {
-					self.gen_serialize_fields(fields, !attrs.contains_key("@sealed"));
+					self.gen_serialize_fields(fields, !attrs.contains_key("@sealed"), false);
 					appendf!(self, "        Ok(())\n");
 				}
 				PBTypeDef::Enum { variants, .. } => {
 					appendf!(self, "        match self {{\n");
-					self.gen_serialize_variants(variants);
+					self.gen_serialize_variants(variants, false);
 					appendf!(self, "        }}\n");
 					appendf!(self, "        Ok(())\n");
 				}
 				_ => unreachable!()
 			}
 			appendf!(self, "    }}\n"); // fn serialize
-			if self.use_tokio {
-				appendf!(self, "    // If you get an compile time error here saying\n");
-				appendf!(self, "    // \"cycle detected when computing type of...,\"\n");
-				appendf!(self, "    // that's because when using async, currently\n");
-				appendf!(self, "    // no cyclic types are supported at all. Sorry!\n");
-			}
+
 			appendf!(self, "    {} deserialize_stream<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
 			match tp {
 				PBTypeDef::Struct { fields, attrs, .. } => {
-					self.gen_deserialize_fields(fields, !attrs.contains_key("@sealed"), true);
+					self.gen_deserialize_fields(fields, !attrs.contains_key("@sealed"), true, false);
 				}
 				PBTypeDef::Enum { variants, .. } => {
-					appendf!(self, "        let discriminant = u8::deserialize_stream(r){}?;\n", self.maybe_await());
+					appendf!(self, "        let discriminant = u8::deserialize_stream(r)?;\n");
 					appendf!(self, "        Ok(match discriminant {{\n",);
-					self.gen_deserialize_variants(variants, true);
+					self.gen_deserialize_variants(variants, true, false);
 					appendf!(self, "        }})\n");
 				}
 				_ => unreachable!()
 			}
 			appendf!(self, "    }}\n"); // fn deserialize_stream
-			if !self.use_tokio {
-				appendf!(self, "    fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+			appendf!(self, "    fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {{\n");
+			match tp {
+				PBTypeDef::Struct { fields, attrs, .. } => {
+					self.gen_deserialize_fields(fields, !attrs.contains_key("@sealed"), false, false);
+				}
+				PBTypeDef::Enum { variants, .. } => {
+					appendf!(self, "        let discriminant = u8::deserialize(r)?;\n");
+					appendf!(self, "        Ok(match discriminant {{\n",);
+					self.gen_deserialize_variants(variants, false, false);
+					appendf!(self, "        }})\n");
+				}
+				_ => unreachable!()
+			}
+			appendf!(self, "    }}\n"); // fn deserialize
+			appendf!(self, "}}\n\n"); // impl PBType
+
+			if self.use_tokio {
+				appendf!(self, "impl{} AsyncPBType for {} {{\n",
+					self.get_type_impl_generics_async(tp), self.get_type_name(tp));
+				// Currently, if the type references itself in any way,
+				// this line will fail to compile, with a message
+				// "cycle detected when computing type of ..."
+				// Async recursion isn't really supported in rust,
+				// possibly related to this issue:
+				// https://github.com/rust-lang/rust/issues/135062
+				// TODO: test this on the new solver
+				appendf!(self, "    // If you get an compile time error here saying\n");
+				appendf!(self, "    // \"cycle detected when computing type of...,\"\n");
+				appendf!(self, "    // that's because when using async, currently\n");
+				appendf!(self, "    // no cyclic types are supported at all. Sorry!\n");
+				appendf!(self, "    async fn serialize_async<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.write_async());
 				match tp {
 					PBTypeDef::Struct { fields, attrs, .. } => {
-						self.gen_deserialize_fields(fields, !attrs.contains_key("@sealed"), false);
+						self.gen_serialize_fields(fields, !attrs.contains_key("@sealed"), true);
+						appendf!(self, "        Ok(())\n");
 					}
 					PBTypeDef::Enum { variants, .. } => {
-						appendf!(self, "        let discriminant = u8::deserialize(r)?;\n");
+						appendf!(self, "        match self {{\n");
+						self.gen_serialize_variants(variants, true);
+						appendf!(self, "        }}\n");
+						appendf!(self, "        Ok(())\n");
+					}
+					_ => unreachable!()
+				}
+				appendf!(self, "    }}\n"); // fn serialize_async
+
+				appendf!(self, "    // If you get an compile time error here saying\n");
+				appendf!(self, "    // \"cycle detected when computing type of...,\"\n");
+				appendf!(self, "    // that's because when using async, currently\n");
+				appendf!(self, "    // no cyclic types are supported at all. Sorry!\n");
+				appendf!(self, "    async fn deserialize_async<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.read_async());
+				match tp {
+					PBTypeDef::Struct { fields, attrs, .. } => {
+						self.gen_deserialize_fields(fields, !attrs.contains_key("@sealed"), true, true);
+					}
+					PBTypeDef::Enum { variants, .. } => {
+						appendf!(self, "        let discriminant = u8::deserialize_async(r).await?;\n");
 						appendf!(self, "        Ok(match discriminant {{\n",);
-						self.gen_deserialize_variants(variants, false);
+						self.gen_deserialize_variants(variants, true, true);
 						appendf!(self, "        }})\n");
 					}
 					_ => unreachable!()
 				}
-				appendf!(self, "    }}\n"); // fn deserialize
+				appendf!(self, "    }}\n"); // fn deserialize_async
+				appendf!(self, "}}\n\n"); // impl PBType
 			}
-			appendf!(self, "}}\n\n"); // impl PBType
 		}
 		if should_include_hash_map_convertible {
 			// HACK: Because of Rust's orphan rules, we can't put this in the punybuf_common crate.
