@@ -3,11 +3,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub use std::borrow::Cow;
 
-use crate::{const_unwrap, from_utf8_lossy_owned};
+use crate::{MAX_ARRAY_LENGTH, MAX_BYTES_LENGTH, from_utf8_lossy_owned};
 pub use crate::{UInt, Done, Void, Bytes, PBCommand, PBCommandExt, PBType};
-
-const MAX_BYTES_LENGTH: usize = const_unwrap!(usize::from_str_radix(env!("PUNYBUF_MAX_BYTES_LENGTH"), 10));
-const MAX_ARRAY_LENGTH: usize = const_unwrap!(usize::from_str_radix(env!("PUNYBUF_MAX_ARRAY_LENGTH"), 10));
 
 /// All Punybuf types implement this trait.
 ///

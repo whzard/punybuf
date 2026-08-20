@@ -1,9 +1,9 @@
 #[macro_export]
-macro_rules! const_unwrap {
-	($e:expr $(,)?) => {
+macro_rules! const_expect {
+	($e:expr, $msg:expr $(,)?) => {
 		match $e {
 			Ok(x) => x,
-			Err(_) => panic!("invalid env variables"),
+			Err(_) => panic!($msg),
 		}
 	};
 }

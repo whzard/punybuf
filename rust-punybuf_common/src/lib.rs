@@ -3,8 +3,14 @@ use std::{collections::HashMap, fmt::{Debug, Display}, io::{self, Error, Read, W
 pub use std::borrow::Cow;
 
 mod const_macro;
-const MAX_BYTES_LENGTH: usize = const_unwrap!(usize::from_str_radix(env!("PUNYBUF_MAX_BYTES_LENGTH"), 10));
-const MAX_ARRAY_LENGTH: usize = const_unwrap!(usize::from_str_radix(env!("PUNYBUF_MAX_ARRAY_LENGTH"), 10));
+const MAX_BYTES_LENGTH: usize = const_expect!(
+	usize::from_str_radix(env!("PUNYBUF_MAX_BYTES_LENGTH"), 10),
+	"invalid value of env variable PUNYBUF_MAX_BYTES_LENGTH"
+);
+const MAX_ARRAY_LENGTH: usize = const_expect!(
+	usize::from_str_radix(env!("PUNYBUF_MAX_ARRAY_LENGTH"), 10),
+	"invalid value of env variable PUNYBUF_MAX_BYTES_LENGTH"
+);
 
 #[cfg(feature = "tokio")]
 pub mod tokio;
@@ -12,6 +18,11 @@ pub mod tokio;
 macro_rules! buffer_too_small {
 	() => {
 		io::Error::new(io::ErrorKind::UnexpectedEof, "buffer too small")
+	}
+}
+macro_rules! eof {
+	() => {
+		io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected EOF")
 	}
 }
 /// All Punybuf types implement this trait.
@@ -69,6 +80,9 @@ impl<'x> PBType<'x> for Done {
 }
 
 /// A variable-length integer. The greatest supported value is 1152921573328437375.
+// TODO: make this constructor private and panic when the value is greater than the
+// maximum.
+// TODO: run benchmarks to see if this UInt encoding is really all that efficient
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UInt(pub u64);
 impl Into<u64> for UInt {
@@ -365,6 +379,9 @@ impl<'x> PBType<'x> for Bytes<'x> {
 		let mut taken = r.take(len as u64);
 
 		taken.read_to_end(&mut this)?;
+		if this.len() != len {
+			eof!();
+		}
 
 		Ok(Self(this.into()))
 	}
@@ -459,6 +476,9 @@ impl<'x> PBType<'x> for String {
 		let mut taken = r.take(len as u64);
 
 		taken.read_to_end(&mut this)?;
+		if this.len() != len {
+			eof!();
+		}
 
 		Ok(from_utf8_lossy_owned(this))
 	}
@@ -529,9 +549,7 @@ pub trait PBCommand {
 // TODO: write more tests
 #[cfg(test)]
 mod libtest {
-	use std::time::{Duration, SystemTime};
-
-use crate::tokio::AsyncPBType;
+	use crate::{PBType, UInt};
 
 	const TEST_UINTS: &[u64] = &[
 		0, 32, 64, 127, 128, 129,
@@ -543,7 +561,6 @@ use crate::tokio::AsyncPBType;
 
 	#[test]
 	fn uint_correct() {
-		use crate::{PBType, UInt};
 		for n in TEST_UINTS {
 			let mut v = vec![];
 			UInt(*n).serialize(&mut v).unwrap();
@@ -564,12 +581,15 @@ use crate::tokio::AsyncPBType;
 	
 	#[tokio::test]
 	async fn async_uint_correct() {
-		use crate::tokio::{PBType, UInt};
+		// use crate::tokio::UInt;
+		use crate::tokio::AsyncPBType;
 		for n in TEST_UINTS {
 			let mut v = vec![];
 			UInt(*n).serialize_async(&mut v).await.unwrap();
-			let same = UInt::deserialize_async(&mut &v[..]).await.unwrap();
+			let r = &mut &v[..];
+			let same = UInt::deserialize_async(r).await.unwrap();
 			assert_eq!(same.0, *n);
+			assert_eq!(*r, &[]);
 		}
 	}
 
