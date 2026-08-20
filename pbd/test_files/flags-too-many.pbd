@@ -1,0 +1,17 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@flags(4)
+MiniFlags = MiniFlags
+
+ExtensibleStruct = {
+	field: Builtin
+	flags: MiniFlags.{
+		flag1?
+		flag2?: Builtin
+		flag3?
+		flag4?: Builtin
+		illegal_exhausted_flag?
+	}
+}

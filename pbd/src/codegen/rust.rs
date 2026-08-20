@@ -913,8 +913,8 @@ impl<'def> RustCodegen<'def> {
 					appendf!(self, "        }}\n");
 				}
 			}
-			appendf!(self, "        bytes.serialize{}(real_w){}?;\n", suffix!(), maybe_await!());
-		} else if extensible && has_extension_flags {
+		}
+		if extensible && has_extension_flags {
 			let extension_flags_field = fields.iter().find(
 				|f| f.attrs.contains_key("@extension_flags")
 			).expect("bad state: has_extension_flags, but no extension flags present");
@@ -946,8 +946,10 @@ impl<'def> RustCodegen<'def> {
 				appendf!(self, "        if let Some(ref v) = self.{} {{\n", flag.name);
 				appendf!(self, "            v.serialize{}(w){}?;\n", suffix!(), maybe_await!());
 				appendf!(self, "        }}\n");
-				appendf!(self, "        bytes.serialize{}(real_w){}?;\n", suffix!(), maybe_await!());
 			}
+		}
+		if extensible && (has_extensions || has_extension_flags) {
+			appendf!(self, "        bytes.serialize{}(real_w){}?;\n", suffix!(), maybe_await!());
 		} else if extensible {
 			appendf!(self, "        UInt(0).serialize{}(w){}?;\n", suffix!(), maybe_await!());
 		}

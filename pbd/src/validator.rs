@@ -584,7 +584,7 @@ impl<'d> PunybufValidator<'d> {
 	}
 	pub fn validate_struct(&mut self, owner: &Owner, fields: &Vec<PBField>) -> Result<(), PunybufError> {
 		let mut seen_names: Vec<(&str, &Span, SeenNameType)> = vec![];
-		let mut can_add_extension_flags = true;
+		let mut non_exhausted_field = None;
 		for field in fields {
 			if field.attrs.contains_key("@extension") {
 				return Err(pb_err!(
@@ -666,8 +666,10 @@ impl<'d> PunybufValidator<'d> {
 								)
 							]
 						));
-					} else if flags.len() < max_amount {
-						can_add_extension_flags = false;
+					} else if flags.len() < max_amount &&
+						!field.attrs.contains_key("@extension_flags")
+					{
+						non_exhausted_field = Some((&field.name, &field.name_span));
 					}
 					Err(FlagsAttrError::Other(pbe)) => return Err(pbe),
 					Err(FlagsAttrError::NoAttribute(decl)) => {
@@ -749,57 +751,77 @@ impl<'d> PunybufValidator<'d> {
 				self.validate_flags(owner, flags, &mut seen_names)?;
 			}
 		}
-		
-		for field in fields {
+
+		let sealed = owner.get_attrs().contains_key("@sealed");
+		for (i, field) in fields.iter().enumerate() {
 			if field.attrs.contains_key("@extension_flags") {
-				if !can_add_extension_flags {
+				if sealed {
 					return Err(pb_err!(
 						field.name_span,
 						format!(
-							"cannot mark field `{}` as \
-							@extension_flags, because not all flag \
-							fields on `{}` are exhausted.",
-							field.name, owner.get_name().0
+							"tried to extend a `@sealed` struct"
 						),
-						after_error: vec![
+						ErrorInfo::instead(vec![
 							diagnostic!(Info,
 								owner.get_name().1.clone(),
 								format!(
-									"`{}` is defined here", owner.get_name().0
+									"`{}` marked as `@sealed` here...",
+									owner.get_name().0
 								)
-							)
-						]
-					));
+							),
+							diagnostic!(Error,
+								field.name_span.clone(),
+								format!(
+									"...but contains an `@extension_flags` \
+									field here",
+								)
+							),
+							diagnostic!(Info,
+								Span::impossible(),
+								format!(
+									"note: `@extension_flags` and \
+									`@sealed` are incompatible",
+								)
+							),
+						])
+					))
 				}
-				if field.flags.is_none() {
+				if i < fields.len() - 1 {
+					// This also prevents users from defining
+					// multiple @extension_flags
 					return Err(pb_err!(
 						field.name_span,
 						format!(
-							"fields marked @extension_flags must be flag fields"
+							"`@extension_flags` must always be the \
+							last field in the struct, `{}` is not",
+							field.name
 						)
 					))
 				}
-			}
-		}
-		
-		for field in fields {
-			if field.attrs.contains_key("@extension_flags") {
-				if !can_add_extension_flags {
+				if let Some((non_ex_name, non_ex_span)) = non_exhausted_field {
 					return Err(pb_err!(
 						field.name_span,
 						format!(
 							"cannot mark field `{}` as \
 							@extension_flags, because not all flag \
-							fields on `{}` are exhausted.",
+							fields on `{}` are exhausted",
 							field.name, owner.get_name().0
 						),
 						after_error: vec![
+							diagnostic!(Tip,
+								non_ex_span.clone(),
+								format!(
+									"tip: add `@extension` flags to \
+									`{}`, which has not yet been exhausted",
+									non_ex_name
+								)
+							),
 							diagnostic!(Info,
 								owner.get_name().1.clone(),
 								format!(
 									"`{}` is defined here", owner.get_name().0
 								)
-							)
+							),
 						]
 					));
 				}
@@ -807,7 +829,7 @@ impl<'d> PunybufValidator<'d> {
 					return Err(pb_err!(
 						field.name_span,
 						format!(
-							"fields marked @extension_flags must be flag fields"
+							"fields marked `@extension_flags` must be flag fields"
 						)
 					))
 				}
