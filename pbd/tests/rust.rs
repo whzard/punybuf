@@ -598,7 +598,7 @@ impl<'a> RustAlternator<'a> {
 			"U64" | "U32" | "U16" | "U8" |
 			// TODO: have a separate category for possibly
 			// negative values
-		 	"I32" | "I64" =>
+			"I32" | "I64" =>
 			{
 				write!(&mut w, r#"{}"#, self.get_integer()).unwrap();
 				true
