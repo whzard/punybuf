@@ -1,0 +1,27 @@
+include common
+
+# I am afraid of going much further with the
+# generics as I fear my incredibly brittle test
+# suite will finally give out and break in mysterious ways
+Thing<X> = {
+	im_x: X
+	im_array_x: Array<X>
+	im_int: I32
+}
+
+TakeThing = {
+	int_thing: Thing<UInt>
+	string_thing: Thing<String>
+	byte_thing: Thing<Bytes>
+}
+
+EnumThing<X> = [
+	Yes: UInt,
+	No: X
+]
+
+TakeEnumThing = {
+	int_thing: EnumThing<UInt>
+	string_thing: EnumThing<String>
+	byte_thing: EnumThing<Bytes>
+}

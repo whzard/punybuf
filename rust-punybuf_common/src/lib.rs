@@ -67,7 +67,7 @@ pub trait HashMapConvertible<K, V>: Sized {
 /// An empty type, used as a return type for a command that doesn't need to return
 /// anything, but needs to indicate that it's been recieved or that the requested
 /// operation finished processing.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Done {}
 
 impl<'x> PBType<'x> for Done {

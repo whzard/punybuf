@@ -1,0 +1,17 @@
+include common
+
+Wrapper = {
+	inline_array: Array<WrappedStruct {
+		field_1: String
+		field_2: UInt
+		field_3: Array<Bytes>
+		flags: UInt.{
+			flag_1?
+			flag_2?
+			flag_3?
+			flag_4?: UInt
+			flag_5?: String
+			flag_6?: String
+		}
+	}>
+}

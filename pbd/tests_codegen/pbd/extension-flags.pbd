@@ -1,0 +1,30 @@
+include common
+
+Extended = {
+	field_1: Bytes
+	field_2: U64
+	field_3: UInt
+	field_4: Array<UInt>
+	field_5: Done
+	flags: U8.{
+		bool_flag_1?
+		bool_flag_2?
+		bool_flag_3?
+		val_flag_1?: Bytes
+		val_flag_2?: String
+		val_flag_3?: UInt
+		@extension
+		ext_bool_flag_?
+		@extension
+		ext_val_flag?: U64
+	}
+	@extension_flags
+	more_flags: U32.{
+		ext_1?
+		ext_2?
+		ext_3?
+		ext_4?: String
+		ext_5?: Bytes
+		ext_6?: Array<UInt>
+	}
+}

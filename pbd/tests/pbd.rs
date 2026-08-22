@@ -1,3 +1,6 @@
+// Custom built harness to check the correctness of the pbd compiler
+// output.
+
 use std::{env, fs, panic::catch_unwind, path::Path, fmt::Write};
 use diff_json::compare_json;
 use punybuf::{PunybufParser, convert_full_definition};
@@ -114,10 +117,10 @@ fn main() -> Result<(), ()> {
 	}
 	println!(
 		"   {} total, \
-		{}{pass_count} passed, \
-		{}{fail_count} failed, \
-		{GRAY}{skip_count} skipped \
-		{NORMAL}\n",
+		{}{pass_count} passed{NORMAL}, \
+		{}{fail_count} failed{NORMAL}, \
+		{GRAY}{skip_count} skipped{NORMAL} \
+		\n",
 		pass_count + fail_count + skip_count,
 		if pass_count > 0 { GREEN } else { GRAY },
 		if fail_count > 0 { RED } else { GRAY },

@@ -51,6 +51,8 @@ pub struct RustCodegen<'def> {
 	use_tokio: bool,
 	uses_common: bool,
 	gen_docs: bool,
+	loud: bool,
+	
 	buffer: String,
 	def: &'def PunybufDefinition,
 	lifetime: &'static str,
@@ -80,11 +82,18 @@ impl<'def> RustCodegen<'def> {
 		Self {
 			use_tokio,
 			uses_common: true,
+			loud: false,
 			gen_docs,
 			buffer: String::new(),
 			def,
 			lifetime: "'x"
 		}
+	}
+	/// Whether we should emit warnings to the console.
+	/// Default: false
+	pub fn loud(mut self, loud: bool) -> Self {
+		self.loud = loud;
+		self
 	}
 	fn gen_lifetime_generics_if(&self, condition: bool) -> String {
 		if condition {
@@ -102,13 +111,34 @@ impl<'def> RustCodegen<'def> {
 			"".into()
 		}
 	}
+	// TODO: cache this, maybe?
 	fn needs_lifetime_with_context(
 		&self, name: &str, layer: u32,
+		generics: &Vec<PBTypeRef>,
 		path: &mut HashSet<(String, u32)>
 	) -> bool {
 		if !path.insert((name.into(), layer)) {
 			return false;
 		};
+
+		for g in generics {
+			if !g.is_global {
+				continue;
+			}
+
+			let path_elem = (g.reference.clone(), g.resolved_layer.expect(
+				&format!("layer of {} not resolved", g.reference)
+			));
+			if self.needs_lifetime_with_context(
+				&g.reference,
+				g.resolved_layer.expect("bad state: layer not resolved"),
+				&g.generics,
+				path
+			) {
+				return true;
+			}
+			path.remove(&path_elem);
+		}
 
 		let typdef = self.def.types.iter().find(|t| {
 			t.get_name().0 == name &&
@@ -132,6 +162,7 @@ impl<'def> RustCodegen<'def> {
 					let result = self.needs_lifetime_with_context(
 						&field.value.reference,
 						field.value.resolved_layer.expect("bad state: layer not resolved"),
+						&field.value.generics,
 						path
 					);
 					path.remove(&path_elem);
@@ -149,6 +180,7 @@ impl<'def> RustCodegen<'def> {
 						let result = self.needs_lifetime_with_context(
 							&value.reference,
 							value.resolved_layer.expect("bad state: layer not resolved"),
+							&value.generics,
 							path
 						);
 						path.remove(&path_elem);
@@ -169,6 +201,7 @@ impl<'def> RustCodegen<'def> {
 					let result = self.needs_lifetime_with_context(
 						&value.reference,
 						value.resolved_layer.expect("bad state: layer not resolved"),
+						&value.generics,
 						path
 					);
 					path.remove(&path_elem);
@@ -186,6 +219,7 @@ impl<'def> RustCodegen<'def> {
 				let result = self.needs_lifetime_with_context(
 					&alias.reference,
 					alias.resolved_layer.expect("bad state: layer not resolved"),
+					&alias.generics,
 					path
 				);
 				path.remove(&path_elem);
@@ -198,6 +232,9 @@ impl<'def> RustCodegen<'def> {
 		if refr.reference == "Void" || !refr.is_global {
 			return false
 		}
+		// We are deliberately ignoring the generic arguments
+		// of our reference because lifetime argument would
+		// appear inside those arguments if we needed them
 		self.needs_lifetime(
 			&refr.reference,
 			refr.resolved_layer.expect(&format!("bad state: layer of {} not resolved", refr.reference))
@@ -205,7 +242,7 @@ impl<'def> RustCodegen<'def> {
 	}
 	fn needs_lifetime(&self, name: &str, layer: u32) -> bool {
 		let mut path = HashSet::new();
-		self.needs_lifetime_with_context(name, layer, &mut path)
+		self.needs_lifetime_with_context(name, layer, &Vec::new(), &mut path)
 	}
 	/// Remnant from a previous version, always
 	/// returns `"fn"`.
@@ -390,12 +427,8 @@ impl<'def> RustCodegen<'def> {
 			result
 		}
 	}
-	/// Must not be used within async code
+	/// Must only be used within async code
 	fn get_type_impl_generics_async(&self, tp: &PBTypeDef) -> String {
-		// we always need the lifetime here whether or not
-		// the actual type needs it, since
-		// we're referencing PBType and it always needs a
-		// lifetime
 		let needs_lifetime = self.needs_lifetime(
 			tp.get_name().0, *tp.get_layer()
 		);
@@ -450,9 +483,12 @@ impl<'def> RustCodegen<'def> {
 			},
 		}
 	}
+	fn gen_derive(&mut self) {
+		appendf!(self, "#[derive(Debug, Clone, PartialEq)]\n");
+	}
 	fn gen_command_enums(&mut self) {
 		appendf!(self, "/// This enum contains all possible commands in the RPC definition.\n");
-		appendf!(self, "#[derive(Debug, Clone)]\n");
+		self.gen_derive();
 		let need_generics = self.def.commands.iter().any(|cmd| {
 			self.command_needs_lifetime(cmd)
 		});
@@ -616,7 +652,7 @@ impl<'def> RustCodegen<'def> {
 			self.needs_lifetime_ref(&cmd.ret)
 		});
 		appendf!(self, "/// This enum contains all possible command return types in the RPC definition.\n");
-		appendf!(self, "#[derive(Debug, Clone)]\n");
+		self.gen_derive();
 		appendf!(self, "pub enum CommandReturn{} {{\n", self.gen_lifetime_generics_if(ret_needs_lifetime));
 		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -719,7 +755,7 @@ impl<'def> RustCodegen<'def> {
 		appendf!(self, "}}\n\n"); // impl CommandReturn
 
 		appendf!(self, "/// This enum contains all possible command error types in the RPC definition.\n");
-		appendf!(self, "#[derive(Debug, Clone)]\n");
+		self.gen_derive();
 		appendf!(self, "pub enum CommandError{} {{\n", self.gen_lifetime_generics_if(true));
 		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -896,8 +932,8 @@ impl<'def> RustCodegen<'def> {
 		if extensible && (has_extensions || has_extension_flags) {
 			// TODO: this is currently a mess.
 			appendf!(self, "        let real_w = w;\n");
-			appendf!(self, "        let mut bytes = Bytes(Vec::new());\n");
-			appendf!(self, "        let w = &mut bytes.0;\n");
+			appendf!(self, "        let mut bytes = Vec::new();\n");
+			appendf!(self, "        let w = &mut bytes;\n");
 		}
 		if extensible && has_extensions {
 			// Probably better to do this with a temporary Vec
@@ -949,7 +985,7 @@ impl<'def> RustCodegen<'def> {
 			}
 		}
 		if extensible && (has_extensions || has_extension_flags) {
-			appendf!(self, "        bytes.serialize{}(real_w){}?;\n", suffix!(), maybe_await!());
+			appendf!(self, "        Bytes(bytes.into()).serialize{}(real_w){}?;\n", suffix!(), maybe_await!());
 		} else if extensible {
 			appendf!(self, "        UInt(0).serialize{}(w){}?;\n", suffix!(), maybe_await!());
 		}
@@ -993,7 +1029,7 @@ impl<'def> RustCodegen<'def> {
 		}
 		if extensible {
 			appendf!(self, "        let mut _extension_bytes = Bytes::deserialize{suffix}(r){}?;\n", maybe_await!());
-			appendf!(self, "        let _extension_reader = &mut &_extension_bytes.0[..];\n");
+			appendf!(self, "        let _extension_reader = &mut &_extension_bytes.0.as_ref()[..];\n");
 			for field in fields {
 				let Some(flags) = &field.flags else { continue };
 				for (i, flag) in flags.iter().enumerate() {
@@ -1007,9 +1043,17 @@ impl<'def> RustCodegen<'def> {
 							"        let flag_{} = if (field_{} & (1 << {i})) != 0 {{\n",
 							flag.name, field.name
 						);
+						// We use deserialize_stream due to how we handle
+						// the deserialization yet. We, unfortunately,
+						// have to allocate and use `deserialize_stream` in order
+						// to avoid the lifetime issues (because we drop
+						// `_extension_bytes` at the end of the function)
+						// 
+						// TODO: Don't use Bytes, just read the UInt and
+						// use `read_exact` or `[..len]` to read
 						appendf!(self,
-							"            Some({}::deserialize{suffix}(_extension_reader){}?)\n",
-							self.gen_reference(val, true), maybe_await!()
+							"            Some({}::deserialize_stream(_extension_reader)?)\n",
+							self.gen_reference(val, true)
 						);
 						appendf!(self,
 							"        }} else {{ None }};\n"
@@ -1040,8 +1084,8 @@ impl<'def> RustCodegen<'def> {
 							"        let flag_{} = if (field_{} & (1 << {i})) != 0 {{\n",
 							flag.name, extension_flags_field.name);
 						appendf!(self,
-							"            Some({}::deserialize{suffix}(_extension_reader){}?)\n",
-							self.gen_reference(val, true), maybe_await!());
+							"            Some({}::deserialize_stream(_extension_reader)?)\n",
+							self.gen_reference(val, true));
 						appendf!(self,
 							"        }} else {{ None }};\n");
 
@@ -1084,8 +1128,8 @@ impl<'def> RustCodegen<'def> {
 				if variant.value.is_some() {
 					appendf!(self, "                // Extension:\n");
 					appendf!(self, "                let real_w = w;\n");
-					appendf!(self, "                let mut bytes = Bytes(Vec::new());\n");
-					appendf!(self, "                let w = &mut bytes.0;\n");
+					appendf!(self, "                let mut bytes = Vec::new();\n");
+					appendf!(self, "                let w = &mut bytes;\n");
 				} else {
 					appendf!(self, "                // Skipped extension:\n");
 					appendf!(self, "                UInt(0).serialize{}(w){}?;\n", suffix!(), maybe_await!());
@@ -1095,7 +1139,7 @@ impl<'def> RustCodegen<'def> {
 				appendf!(self, "                value.serialize{}(w){}?;\n", suffix!(), maybe_await!());
 			}
 			if variant.attrs.contains_key("@extension") && variant.value.is_some() {
-				appendf!(self, "                bytes.serialize{}(real_w){}?;\n", suffix!(), maybe_await!());
+				appendf!(self, "                Bytes(bytes.into()).serialize{}(real_w){}?;\n", suffix!(), maybe_await!());
 			}
 			appendf!(self, "            }}\n");
 		}
@@ -1148,7 +1192,7 @@ impl<'def> RustCodegen<'def> {
 				continue;
 			}
 			self.gen_doc(&cmd.doc, 0);
-			appendf!(self, "#[derive(Debug, Clone)]\n");
+			self.gen_derive();
 			let cmd_needs_lifetime = self.command_needs_lifetime(cmd);
 			appendf!(self, "pub struct {}", self.gen_command_name(cmd));
 			match &cmd.argument {
@@ -1290,7 +1334,7 @@ impl<'def> RustCodegen<'def> {
 				appendf!(self, "}}\n\n"); // impl PBCommand
 			}
 
-			appendf!(self, "#[derive(Debug, Clone)]\n");
+			self.gen_derive();
 			appendf!(self, "pub enum {} {{\n", self.gen_command_err(cmd));
 			// Since we have this, all error enums need a lifetime
 			appendf!(self, "    UnexpectedError(Cow<'x, str>),\n");
@@ -1359,6 +1403,14 @@ impl<'def> RustCodegen<'def> {
 				}
 				continue;
 			}
+			if self.uses_common && tp.get_name().0 == "Done" {
+				// HACK: We just skip the `Done` as it's and empty
+				// struct and defined in the common crate
+				// TODO: Move the Map, Done, and all others
+				// to the common crate and do not generate definitions
+				// here.
+				continue;
+			}
 			if tp.get_attrs().contains_key("@map_convertible") {
 				appendf!(
 					self,
@@ -1380,14 +1432,14 @@ impl<'def> RustCodegen<'def> {
 				}
 				PBTypeDef::Struct { fields, doc, .. } => {
 					self.gen_doc(doc, 0);
-					appendf!(self, "#[derive(Debug, Clone)]\n");
+					self.gen_derive();
 					appendf!(self, "pub struct {} {{\n", self.get_type_name(tp));
 					self.gen_fields(fields);
 					appendf!(self, "}}\n");
 				}
 				PBTypeDef::Enum { variants, doc, .. } => {
 					self.gen_doc(doc, 0);
-					appendf!(self, "#[derive(Debug, Clone)]\n");
+					self.gen_derive();
 					appendf!(self, "pub enum {} {{\n", self.get_type_name(tp));
 					self.gen_variants(variants);
 					appendf!(self, "}}\n");
@@ -1505,7 +1557,7 @@ impl<'def> RustCodegen<'def> {
 		}
 	}
 	pub fn codegen(mut self) -> String {
-		if self.use_tokio {
+		if self.loud && self.use_tokio {
 			eprintln!(
 				"{YELLOW}{BOLD}warning:{NORMAL} rust tokio builds are currently broken \
 				for several reasons. see https://github.com/rust-lang/rust/issues/100013 \

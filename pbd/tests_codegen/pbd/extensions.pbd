@@ -1,0 +1,35 @@
+include common
+
+Extended = {
+	field_1: Bytes
+	field_2: U64
+	field_3: UInt
+	field_4: Array<UInt>
+	field_5: Done
+	flags: UInt.{
+		bool_flag_1?
+		bool_flag_2?
+		bool_flag_3?
+		val_flag_1?: Bytes
+		val_flag_2?: String
+		val_flag_3?: UInt
+		val_flag_4?: U64
+		@extension
+		extended_bool_flag_1?
+		@extension
+		extended_bool_flag_2?
+		@extension
+		extended_val_flag_1?: String
+		@extension
+		extended_val_flag_2?: Array<String>
+	}
+}
+
+ExtendedEnum = [
+	@default
+	Default,
+	@extension
+	Extended: String,
+	@extension
+	MoreExtended: Bytes
+]

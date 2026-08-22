@@ -1,2 +1,5 @@
 /target
 /examples
+/tests_codegen/*
+!/tests_codegen/pbd
+!/tests_codegen/README.md

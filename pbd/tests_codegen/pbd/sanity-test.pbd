@@ -1,0 +1,34 @@
+include common
+
+# comment
+#[ documentation ]
+SomeStruct = {
+	field_1: String
+	field_2: Bytes
+	flag_field: U64.{
+		flag?
+		flag_with_value?: String
+	}
+}
+
+SomeEnum = [
+	Variant1, Variant2,
+	AssociatedValue: SomeStruct
+]
+
+TypeEnum = (
+	SomeStruct, SomeEnum, String
+)
+
+SomeAlias = SomeStruct
+
+@resolve
+ResolvedAlias = SomeStruct
+
+Other = {
+	field_1: Bytes
+	field_2: U64
+	field_3: UInt
+	field_4: Array<UInt>
+	field_5: Done
+}

@@ -1,0 +1,11 @@
+include common
+
+@sealed
+Sealed = {
+	field_1: String
+	field_2: Bytes
+	flag_field: U64.{
+		flag?
+		flag_with_value?: String
+	}
+}

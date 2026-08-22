@@ -17,7 +17,11 @@ name = "punybuf"
 path = "src/lib.rs"
 
 [[test]]
-name = "harness"
+name = "pbd"
+harness = false
+
+[[test]]
+name = "rust"
 harness = false
 
 [dev-dependencies]
