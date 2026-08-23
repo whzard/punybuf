@@ -370,10 +370,10 @@ Struct = {
 ```
             ext_flag_2 -------+
             |                 |
-            | predef_flag_2?  |              more_extension_flag?
-            | |   |           |              |          |
-            v v   v           v              v          v
-{Value} 00001010 {String} {n} {Value} 00000001 00000000 {Value}
+            | predef_flag_2?  |                       more_extension_flag?
+            | |   |           |                       | |
+            v v   v           v                       v v
+{Value} 00001010 {String} {n} {Value} 00000000 00000001 {Value}
                               |---------------n---------------|
 ```
 And to an outdated deserializer will look like this:

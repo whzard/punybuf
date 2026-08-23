@@ -336,7 +336,7 @@ coolCommand: {
 Every `include` resets the current layer to `0`. This is so you don't accidentally time-travel (don't worry, the compiler will catch it anyway), but it isn't yet implemented in the best way. TODO: ideally, every file would begin with layer 0 instead.
 
 ### Negotiating layers
-Layer negotiation can be done at any level of the protocol, but must be done by you. Punybuf libraies (at least for now) don't provide any facilities to make this process less painful. It can be as simple as that:
+Layer negotiation can be done at any level of the protocol, but must be done by you. Punybuf libraries (at least for now) don't provide any facilities to make this process less painful. It can be as simple as that:
 
 ```pbd
 #[ The server sets the maximum supported layer. ]
@@ -348,7 +348,7 @@ negotiateLayer: {
 Or it can be done before the punybuf RPC even runs, such as in a URL of a websocket request.
 
 ### Evolving the protocol with layers
-You'll soon find out why using [extensions](#Extensions) is preferrable. :)
+You'll soon find out why using [extensions](#Extensions) is preferable. :)
 
 Layers just simplify a process of simply copying the file and changing things inside. To evolve a command, just redefine it on a new layer:
 
@@ -373,7 +373,7 @@ coolCommand_LAYER1: {
 } -> Done ![InvalidArgument]
 ```
 
-However, the point of layers is that they automatically track dependencies. Redefining structs, on which commands and other structs depend, will regenerate their definitions automatically.
+However, the point of layers is that they automatically track dependencies. Redefining types, on which commands and other types depend, will regenerate their definitions automatically.
 
 So, all you need to write is this:
 ```pbd
@@ -385,7 +385,7 @@ CoolStruct = {
 }
 ```
 
-And the in return, a new `coolCommand` will be generated, since punybuf knows, what it depends on:
+And in return, a new `coolCommand` will be generated, since punybuf knows, what it depends on:
 ```pbd
 #equivalent to:
 CoolStruct_LAYER2 = {
@@ -452,6 +452,6 @@ coolCommand_LAYER2: {
 } -> Done ![InvalidArgument]
 ```
 
-This, although saves some headache, is still really annoying, since in your actual code, you'll need to handle all three versions of the same command. There's simply no way around it if you want to break binary compatibility. So, this is why it's better to use extensions so you don't have to break binary compatibility.
+This, although saves some headache, is still really annoying, since in your actual code, you'll need to handle all three versions of the same command. There's simply no way around it if you want to break binary compatibility. So, this is why you may consider using [extensions](#extensions) for evolving your protocol.
 
 **TODO: capabilities**
