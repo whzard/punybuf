@@ -2,14 +2,11 @@ use std::{collections::HashMap, fmt::Display, u32};
 
 use crate::{
 	errors::{
-		diagnostic,
-		Diagnostic, ErrorInfo, PunybufError, parser_err, pb_err
-	},
-	flattener::{
+		Diagnostic, ErrorInfo, PunybufError, diagnostic, parser_err, pb_err
+	}, flattener::{
 		PB_CRC, PBCommandArg, PBCommandDef, PBEnumVariant,
 		PBField, PBFieldFlag, PBTypeDef, PBTypeRef, PunybufDefinition
-	},
-	lexer::Span,
+	}, lexer::Span, maybe_anon,
 };
 
 const COMMON_TYPES: [&str; 16] = [
@@ -488,7 +485,7 @@ impl<'d> PunybufValidator<'d> {
 		&self, owner: &Owner, field: &PBField,
 		// TODO: maybe just unwrap the flags from the field?
 		flags: &'f Vec<PBFieldFlag>,
-		non_exhausted_field: Option<(&String, &Span)>,
+		non_exhausted_field: Option<&PBField>,
 		seen_names: &mut Vec<(&'n str, &'n Span, SeenNameType)>
 	)
 		-> Result<(), PunybufError>
@@ -565,16 +562,16 @@ impl<'d> PunybufValidator<'d> {
 						]
 					));
 				}
-				if let Some((n_name, n_span)) = non_exhausted_field && flag.value.is_some() {
+				if let Some(non_ex) = non_exhausted_field && flag.value.is_some() {
 					return Err(pb_err!(
-						owner.get_name().1,
+						non_ex.name_span,
 						format!(
-							"blocked extending of flag field `{}`",
-							n_name
+							"blocked extending of {}",
+							maybe_anon!(non_ex, "flag field `{}`", "this anonymous flag field")
 						),
 						ErrorInfo::instead(vec![
 							diagnostic!(Info,
-								n_span.clone(),
+								non_ex.name_span.clone(),
 								format!(
 									"this flag field is not exhausted, \
 									meaning more `@extension`s can be \
@@ -598,7 +595,7 @@ impl<'d> PunybufValidator<'d> {
 								)
 							),
 							diagnostic!(Tip,
-								n_span.clone(),
+								non_ex.name_span.clone(),
 								format!(
 									"tip: add the extensions to this \
 									flag field instead or mark it \
@@ -631,7 +628,7 @@ impl<'d> PunybufValidator<'d> {
 	}
 	pub fn validate_struct(&mut self, owner: &Owner, fields: &Vec<PBField>) -> Result<(), PunybufError> {
 		let mut seen_names: Vec<(&str, &Span, SeenNameType)> = vec![];
-		let mut non_exhausted_field: Option<(&String, &Span)> = None;
+		let mut non_exhausted_field: Option<&PBField> = None;
 		for field in fields {
 			if field.attrs.contains_key("@extension") {
 				return Err(pb_err!(
@@ -720,7 +717,7 @@ impl<'d> PunybufValidator<'d> {
 						!field.attrs.contains_key("@sealed")
 					{
 						prev_non_exhausted_field = non_exhausted_field;
-						non_exhausted_field = Some((&field.name, &field.name_span));
+						non_exhausted_field = Some(field);
 					}
 					Err(FlagsAttrError::Other(pbe)) => return Err(pbe),
 					Err(FlagsAttrError::NoAttribute(decl)) => {
@@ -847,19 +844,20 @@ impl<'d> PunybufValidator<'d> {
 						field.name_span,
 						format!(
 							"`@extension_flags` must always be the \
-							last field in the struct, `{}` is not",
-							field.name
+							last field in the struct, {} is not",
+							maybe_anon!(field, "`{}`", "this anonymous field")
 						)
 					))
 				}
-				if let Some((non_ex_name, non_ex_span)) = non_exhausted_field {
+				if let Some(non_ex) = non_exhausted_field {
 					return Err(pb_err!(
 						field.name_span,
 						format!(
-							"cannot mark field `{}` as \
+							"cannot mark {} as \
 							@extension_flags, because not all flag \
 							fields on `{}` are exhausted",
-							field.name, owner.get_name().0
+							maybe_anon!(field, "field `{}`", "this anonymous field"),
+							owner.get_name().0
 						),
 						after_error: vec![
 							diagnostic!(Info,
@@ -869,13 +867,13 @@ impl<'d> PunybufValidator<'d> {
 								)
 							),
 							diagnostic!(Tip,
-								non_ex_span.clone(),
+								non_ex.name_span.clone(),
 								format!(
-									"tip: add `@extension` flags to \
-									`{}`, which has not yet been exhausted, \
+									"tip: add more `@extension` flags to \
+									{}, which has not yet been exhausted, \
 									or mark it `@sealed` to prevent further \
 									extensions on it",
-									non_ex_name
+									maybe_anon!(non_ex, "`{}`", "this field")
 								)
 							),
 						]

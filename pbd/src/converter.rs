@@ -345,6 +345,7 @@ fn fields_from_json(obj_fields: &mut JsonValue) -> Result<Vec<PBField>, String> 
 		fields.push(PBField {
 			name: obj_field.remove("name").to_string(),
 			name_span: Span::impossible(),
+			anonymous: false,
 			value: ref_from_json(&mut obj_field.remove("value"))?,
 			flags: flags_from_json(&mut obj_field.remove("flags"))?,
 			attrs: attrs_from_json(&mut obj_field.remove("attrs")),

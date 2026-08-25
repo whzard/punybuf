@@ -48,6 +48,7 @@ pub(crate) struct PBFieldFlag {
 pub(crate) struct PBField {
 	pub(crate) name: String,
 	pub(crate) name_span: Span,
+	pub(crate) anonymous: bool,
 	pub(crate) value: PBTypeRef,
 	pub(crate) flags: Option<Vec<PBFieldFlag>>,
 	pub(crate) attrs: HashMap<String, Option<String>>,
@@ -298,6 +299,7 @@ impl PunybufDefinition {
 		PBField {
 			name: field.name, name_span: field.name_span,
 			value: self.flatten_reference(field.value),
+			anonymous: field.anonymous,
 			flags, attrs: field.attrs, doc: self.flatten_doc(field.doc)
 		}
 	}
@@ -478,4 +480,24 @@ pub(crate) fn flatten(decls: Vec<Declaration>, includes_common: bool) -> Result<
 	}
 
 	Ok(def)
+}
+
+#[macro_export]
+macro_rules! maybe_anon {
+	($field:expr, $normal:literal, $anon:literal) => {{
+		let f = &$field;
+		if !f.anonymous {
+			format!($normal, f.name)
+		} else {
+			format!($anon)
+		}
+	}};
+	($field:expr, $normal:literal, $anon:literal, $($fmt:expr)*) => {{
+		let f = &$field;
+		if !f.anonymous {
+			format!($normal, f.name, $($fmt,)+)
+		} else {
+			format!($anon, $($fmt,)+)
+		}
+	}}
 }

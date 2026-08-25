@@ -54,6 +54,7 @@ pub(crate) struct Field {
 	pub(crate) name: String,
 	pub(crate) name_span: Span,
 	pub(crate) value: ValueReference,
+	pub(crate) anonymous: bool,
 	pub(crate) flags: Option<Vec<FieldFlag>>,
 	pub(crate) attrs: HashMap<String, Option<String>>,
 	pub(crate) doc: String,
@@ -653,6 +654,7 @@ impl<'parser> Parser<'parser> {
 							fields.push(Field {
 								name: format!("{anonymous_flags_number}_flags"),
 								name_span: token.span.clone(),
+								anonymous: true,
 								value: refr,
 								flags,
 								attrs: next_attrs,
@@ -697,6 +699,7 @@ impl<'parser> Parser<'parser> {
 							fields.push(Field {
 								name: field_name.to_string(),
 								name_span: token.span.clone(),
+								anonymous: false,
 								value: refr,
 								flags: field_flags,
 								attrs: next_attrs,
