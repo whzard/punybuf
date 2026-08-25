@@ -52,7 +52,7 @@ impl Loc {
 pub struct Span {
 	pub(crate) loc_start: Loc,
 	pub(crate) loc_end: Loc,
-	pub(crate) file_name: String,
+	pub(crate) file_name: Rc<String>,
 	pub(crate) file_contents: Rc<String>,
 }
 
@@ -67,7 +67,7 @@ impl Span {
 		Self {
 			loc_start: Loc::zero(),
 			loc_end: Loc::zero(),
-			file_name: "".to_string(),
+			file_name: Rc::new("".to_string()),
 			file_contents: Rc::new("".to_string())
 		}
 	}
@@ -98,7 +98,7 @@ pub struct Token {
 }
 
 impl Token {
-	fn new(data: TokenData, loc: Loc, file_name: String, file_contents: Rc<String>) -> Self {
+	fn new(data: TokenData, loc: Loc, file_name: Rc<String>, file_contents: Rc<String>) -> Self {
 		let mut loc_end = Loc { row: loc.row, col: loc.col + 1 };
 		match &data {
 			TokenData::AngleBrackets(inner) |
@@ -218,19 +218,20 @@ impl IncludeHandler for IncludeDisallowed {
 
 pub struct Lexer<'a, I> {
 	pub(crate) contents: Rc<String>,
-	pub(crate) file_name: &'a str,
+	pub(crate) file_name: Rc<String>,
 	pub(crate) current_loc: Loc,
 	pub(crate) include_handler: &'a mut I,
 	pub(crate) includes_common: bool,
 }
 
 impl<'a, I: IncludeHandler> Lexer<'a, I> {
-	pub fn new(contents: String, file_name: &'a str, include_handler: &'a mut I) -> Self {
-		let rc = Rc::new(contents);
+	pub fn new(contents: String, file_name: String, include_handler: &'a mut I) -> Self {
+		let contents = Rc::new(contents);
+		let file_name = Rc::new(file_name);
 
 		Self {
 			file_name,
-			contents: rc,
+			contents,
 			current_loc: Loc::zero(),
 			include_handler,
 			includes_common: false,
@@ -241,7 +242,7 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 		Span {
 			loc_start: Loc { row: self.current_loc.row + 1, col: 0 },
 			loc_end: Loc { row: self.current_loc.row + 1, col: IMPLICIT_LAYER_DEFINITION.len() },
-			file_name: self.file_name.into(),
+			file_name: self.file_name.clone(),
 			file_contents: Rc::new("\n".repeat(self.current_loc.row + 1) + IMPLICIT_LAYER_DEFINITION)
 		}
 	}
@@ -273,13 +274,13 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 		return Ok(tokens);
 	}
 	pub(crate) fn token(&self, data: TokenData) -> Token {
-		Token::new(data, self.current_loc.clone(), self.file_name.to_string(), self.contents.clone())
+		Token::new(data, self.current_loc.clone(), self.file_name.clone(), self.contents.clone())
 	}
 	pub(crate) fn token_end_loc(&self, data: TokenData, loc_end: Loc) -> Token {
 		Token {
 			data, span: Span {
 				loc_start: self.current_loc.clone(),
-				loc_end, file_name: self.file_name.to_string(),
+				loc_end, file_name: self.file_name.clone(),
 				file_contents: self.contents.clone()
 			}
 		}
@@ -289,7 +290,7 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 			Span {
 				loc_start: self.current_loc.clone(),
 				loc_end: Loc { row: self.current_loc.row, col: self.current_loc.col + 1 },
-				file_name: self.file_name.to_string(),
+				file_name: self.file_name.clone(),
 				file_contents: self.contents.clone()
 			},
 			error
@@ -552,12 +553,8 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 								}
 
 								self.current_loc = loc_end.clone();
-								/* let mut included_tokens = (self.include_fn)(path, Span {
-									loc_start, loc_end, file_name: self.file_name.to_string(),
-									file_contents: self.contents.clone()
-								})?; */
 								let mut included_tokens = self.include_handler.handle_include(path, Span {
-									loc_start, loc_end, file_name: self.file_name.to_string(),
+									loc_start, loc_end, file_name: self.file_name.clone(),
 									file_contents: self.contents.clone()
 								})?;
 
@@ -596,7 +593,7 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 
 								return Err(parser_err!(Span {
 									loc_start: self.current_loc.clone(), loc_end,
-									file_name: self.file_name.to_string(),
+									file_name: self.file_name.clone(),
 									file_contents: self.contents.clone()
 								}, "invalid number: {err}"))
 							}

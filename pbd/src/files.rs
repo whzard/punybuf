@@ -29,7 +29,7 @@ fn lexer_from_file<'a>(file: &'a Path, include_handler: &'a mut FileIncludeHandl
 
 	let f_str = file.to_str().ok_or(io_err("Invalid UTF-8"))?;
 
-	Ok(Lexer::new(content, f_str, include_handler))
+	Ok(Lexer::new(content, f_str.into(), include_handler))
 }
 
 struct FileIncludeHandler {
@@ -46,7 +46,7 @@ impl IncludeHandler for FileIncludeHandler {
 			}
 			self.included.push((include_path, include_span.clone()));
 			let mut rust_is_funny = IncludeDisallowed;
-			let mut l = Lexer::new(COMMON.to_string(), "<common>", &mut rust_is_funny);
+			let mut l = Lexer::new(COMMON.to_string(), "<common>".into(), &mut rust_is_funny);
 			return l.lex();
 		}
 		let real_path = self.root_path.join(Path::new(&include_path));
@@ -78,7 +78,7 @@ impl IncludeHandler for FileIncludeHandler {
 						Span {
 							loc_start: Loc { row: 0, col: command_start.len() },
 							loc_end: Loc { row: 0, col: command_start.len() + rp_string.len() },
-							file_name: "<shell>".to_string(),
+							file_name: Rc::new("<shell>".to_string()),
 							file_contents: Rc::new(format!("{command_start}{rp_string}\""))
 						},
 						format!("\"{rp_string}\" is the entry point...")
