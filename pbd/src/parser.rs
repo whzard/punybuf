@@ -19,6 +19,7 @@ pub(crate) enum ValueReference {
 	InlineDeclaration {
 		symbol: String,
 		name_span: Span,
+		attributes: HashMap<String, Option<String>>,
 		decl: FlexibleDeclarationValue,
 		decl_span: Span,
 	}
@@ -26,14 +27,14 @@ pub(crate) enum ValueReference {
 impl ValueReference {
 	pub(crate) fn get_name(&self) -> &str {
 		match &self {
-			ValueReference::InlineDeclaration { symbol, decl: _, name_span: _, decl_span: _ } => symbol,
-			ValueReference::Reference { name, generics: _, name_span: _, generic_span: _ } => name
+			ValueReference::InlineDeclaration { symbol, .. } => symbol,
+			ValueReference::Reference { name, .. } => name
 		}
 	}
 	pub(crate) fn get_name_span(&self) -> &Span {
 		match &self {
-			ValueReference::InlineDeclaration { symbol: _, decl: _, name_span, decl_span: _ } => name_span,
-			ValueReference::Reference { name: _, generics: _, name_span, generic_span: _ } => name_span
+			ValueReference::InlineDeclaration { name_span, .. } => name_span,
+			ValueReference::Reference { name_span, ..} => name_span
 		}
 	}
 }
@@ -952,17 +953,28 @@ impl<'parser> Parser<'parser> {
 	fn parse_reference(peekable: &mut Peekable<Iter<Token>>, before_sym: &Span, layer: u32)
 		-> Result<ValueReference, PunybufError>
 	{
-		let thing = peekable.next().ok_or(parser_err!(
+		let mut thing = peekable.next().ok_or(parser_err!(
 			before_sym,
 			"expected an identifier, got nothing"
 		))?;
-		let name = match &thing.data {
-			TokenData::Symbol(x) => x,
-			_ => {
-				return Err(parser_err!(thing.span, "expected an identifier, got `{thing}`"));
+		let mut attrs = HashMap::new();
+		let name = loop {
+			match &thing.data {
+				TokenData::Symbol(x) => break x,
+				TokenData::Attribute(attr, value) => {
+					thing = peekable.next().ok_or(parser_err!(
+						before_sym,
+						"expected an identifier, got nothing"
+					))?;
+					attrs.insert(attr.to_owned(), value.to_owned());
+				}
+				_ => {
+					return Err(parser_err!(thing.span, "expected an identifier, got `{thing}`"));
+				}
 			}
 		};
 
+		// TODO?: allow `=` before inline decls to make it greppable
 		match &peekable.peek() {
 			Some(Token { data, span }) => {
 				match data {
@@ -1005,6 +1017,7 @@ impl<'parser> Parser<'parser> {
 						return Ok(ValueReference::InlineDeclaration {
 							symbol: name.to_string(),
 							name_span: thing.span.clone(),
+							attributes: attrs,
 							decl, decl_span
 						});
 					}
@@ -1013,6 +1026,24 @@ impl<'parser> Parser<'parser> {
 			}
 			_ => {}
 		};
+
+		if !attrs.is_empty() {
+			return Err(pb_err!(
+				thing.span,
+				format!(
+					"attributes cannot be defined on references"
+				),
+				after_error: vec![
+					diagnostic!(Tip,
+						thing.span.clone(),
+						format!(
+							"perhaps you meant to declare `{}` inline?",
+							name
+						)
+					)
+				]
+			));
+		}
 
 		Ok(ValueReference::Reference {
 			name: name.to_string(),

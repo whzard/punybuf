@@ -265,13 +265,11 @@ impl PunybufDefinition {
 					is_highest_layer: false
 				}
 			}
-			ValueReference::InlineDeclaration { symbol, name_span, decl, .. } => {
+			ValueReference::InlineDeclaration { symbol, name_span, decl, attributes, .. } => {
 				self.flatten_flexible_decl(
 					symbol.to_string(), name_span.clone(),
 					"".to_string(),
-					// TODO: add an ability to add attributes to
-					// inline declarations
-					HashMap::new(),
+					attributes,
 					decl, vec![],
 					Span::impossible()
 				);
