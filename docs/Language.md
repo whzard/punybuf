@@ -299,6 +299,8 @@ User = {
 
 We don't need to mark every flag on our thing as `@extension`, since we've defined an `@extension_flags` field.
 
+Note: Flag fields can be forcefully marked as exhausted by using `@sealed` on it. You must not add any more extensions to it in later versions of the protocol, as that will break compatibility. In most cases, you won't need this.
+
 ## Extending enums
 By default, enums are not extensible. To make an enum extensible, mark one of its variants as [`@default`](Attributes.md#default). This variant must not take an associated value. Then, you can add new enum variants by marking them as `@extension`.
 

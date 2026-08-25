@@ -601,7 +601,9 @@ impl<'d> PunybufValidator<'d> {
 								n_span.clone(),
 								format!(
 									"tip: add the extensions to this \
-									flag field instead"
+									flag field instead or mark it \
+									`@sealed` to prevent further extensions \
+									on it"
 								)
 							),
 						])
@@ -714,7 +716,8 @@ impl<'d> PunybufValidator<'d> {
 							]
 						));
 					} else if flags.len() < max_amount &&
-						!field.attrs.contains_key("@extension_flags")
+						!field.attrs.contains_key("@extension_flags") &&
+						!field.attrs.contains_key("@sealed")
 					{
 						prev_non_exhausted_field = non_exhausted_field;
 						non_exhausted_field = Some((&field.name, &field.name_span));
@@ -859,18 +862,20 @@ impl<'d> PunybufValidator<'d> {
 							field.name, owner.get_name().0
 						),
 						after_error: vec![
-							diagnostic!(Tip,
-								non_ex_span.clone(),
-								format!(
-									"tip: add `@extension` flags to \
-									`{}`, which has not yet been exhausted",
-									non_ex_name
-								)
-							),
 							diagnostic!(Info,
 								owner.get_name().1.clone(),
 								format!(
 									"`{}` is defined here", owner.get_name().0
+								)
+							),
+							diagnostic!(Tip,
+								non_ex_span.clone(),
+								format!(
+									"tip: add `@extension` flags to \
+									`{}`, which has not yet been exhausted, \
+									or mark it `@sealed` to prevent further \
+									extensions on it",
+									non_ex_name
 								)
 							),
 						]

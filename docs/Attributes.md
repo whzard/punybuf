@@ -35,7 +35,7 @@ Conflicts with [`@sealed`](#sealed) on the parent struct.
 Invalid when no [`@default`](#default) variant exists on the enum.
 
 ## `@extension_flags`
-> applied to **one flag field** by the **implementation**, checked by the compiler
+> applied to **the final flag field** by the **implementation**, checked by the compiler
 
 Mark this field as the extension flag field. Must be a flag field. All other flag fields on the struct must be exhausted. See [Extensions](Language.md#extensions).
 
@@ -50,6 +50,10 @@ Mark this command only available when a capability with the name `name` is avail
 > applied to **structs** or **commands** by the **implementation**, checked by the compiler
 
 Disallow [extensions](Language.md#extensions) on this struct.
+
+> applied to **flag fields** by the **compiler**
+
+Promise that no more extensions will be added to this flag field in the future, effectively making it exhausted.
 
 ## `@default`
 > applied to **enum variants** by the **implementation**, checked by the compiler
