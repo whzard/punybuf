@@ -1,0 +1,19 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@flags(64)
+Flags = Flags
+
+SomeStruct = {
+	field_1: Builtin
+	field_2: Builtin
+	flag_field: Flags.{
+		flag?
+		flag_with_value?: Builtin
+	}
+	field_inline: SomeInlineStruct {
+		field_2: Builtin
+		field_3: Builtin
+	}
+}
