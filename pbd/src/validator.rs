@@ -486,6 +486,7 @@ impl<'d> PunybufValidator<'d> {
 	}
 	fn validate_flags<'n, 'f: 'n>(
 		&self, owner: &Owner, flags: &'f Vec<PBFieldFlag>,
+		non_exhausted_field: Option<(&String, &Span)>,
 		seen_names: &mut Vec<(&'n str, &'n Span, SeenNameType)>
 	)
 		-> Result<(), PunybufError>
@@ -562,6 +563,48 @@ impl<'d> PunybufValidator<'d> {
 						]
 					));
 				}
+				if let Some((n_name, n_span)) = non_exhausted_field && flag.value.is_some() {
+					return Err(pb_err!(
+						owner.get_name().1,
+						format!(
+							"blocked extending of flag field `{}`",
+							n_name
+						),
+						ErrorInfo::instead(vec![
+							diagnostic!(Info,
+								n_span.clone(),
+								format!(
+									"this flag field is not exhausted, \
+									meaning more `@extension`s can be \
+									added to it"
+								)
+							),
+							diagnostic!(Info,
+								owner.get_name().1.clone(),
+								format!(
+									"in this flag field..."
+								)
+							),
+							diagnostic!(Error,
+								flags.last()
+									.map(|x| x.name_span.clone())
+									.unwrap_or(Span::impossible()),
+								format!(
+									"...this `@extension` means the \
+									previous flag field cannot be \
+									extended in a backwards compatible way"
+								)
+							),
+							diagnostic!(Tip,
+								n_span.clone(),
+								format!(
+									"tip: add the extensions to this \
+									flag field instead"
+								)
+							),
+						])
+					));
+				}
 				extension_begin = Some((&flag.name, &flag.name_span));
 			} else if let Some((_, ext_span)) = extension_begin {
 				return Err(pb_err!(
@@ -584,7 +627,7 @@ impl<'d> PunybufValidator<'d> {
 	}
 	pub fn validate_struct(&mut self, owner: &Owner, fields: &Vec<PBField>) -> Result<(), PunybufError> {
 		let mut seen_names: Vec<(&str, &Span, SeenNameType)> = vec![];
-		let mut non_exhausted_field = None;
+		let mut non_exhausted_field: Option<(&String, &Span)> = None;
 		for field in fields {
 			if field.attrs.contains_key("@extension") {
 				return Err(pb_err!(
@@ -647,6 +690,8 @@ impl<'d> PunybufValidator<'d> {
 					PBTypeDef::Struct { name_span, .. } |
 					PBTypeDef::Enum { name_span, .. } => name_span,
 				};
+				// TODO: this code is ugly
+				let mut prev_non_exhausted_field = None;
 				match self.follow_to_flags_attr(field_ref_decl, owner, 0) {
 					Ok(max_amount) => if flags.len() > max_amount {
 						return Err(pb_err!(
@@ -669,6 +714,7 @@ impl<'d> PunybufValidator<'d> {
 					} else if flags.len() < max_amount &&
 						!field.attrs.contains_key("@extension_flags")
 					{
+						prev_non_exhausted_field = non_exhausted_field;
 						non_exhausted_field = Some((&field.name, &field.name_span));
 					}
 					Err(FlagsAttrError::Other(pbe)) => return Err(pbe),
@@ -748,7 +794,10 @@ impl<'d> PunybufValidator<'d> {
 						))
 					},
 				}
-				self.validate_flags(owner, flags, &mut seen_names)?;
+				self.validate_flags(
+					owner, flags,
+					prev_non_exhausted_field, &mut seen_names
+				)?;
 			}
 		}
 

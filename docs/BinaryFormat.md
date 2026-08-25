@@ -144,7 +144,7 @@ Mood = [
 If an enum variant is marked by `@default`, this enum supports extensions. If the value is unknown, set the enum value to the default variant. `@default` variants never have an associated type. Extensions are discussed in detail [below](#extending-enums).
 
 ## Commands
-This section is applicable only for Punybuf RPC (commands). Commands are just types that have special meaning assigned to them. Commands can be "sent" (we use "invoked") from both parties, they can either respond with a return value, return an error, or provide no confirmation (`Void`).
+This section is applicable only for Punybuf RPC (commands). Commands are just types that have special meaning assigned to them. Commands can be "sent" (we use "invoked") from both parties and can either be responded to with a return value, return an error, or provide no confirmation (`Void`).
 
 This specification expects a reliable bidirectional stream. These expectations may be fulfilled in part by using the Punybuf RPC (like providing reliable delivery using special commands) if necessary, but they may require some modification to the protocol not described here.
 
@@ -179,6 +179,8 @@ mayFail: () -> Nil ![SomeError, SomeOtherError]
 ```
 mayFail: () -> Nil ![_UnknownError_: String, SomeError, SomeOtherError]
 ```
+
+Implementations should provide a way to deserialize error and return types of commands based on a command ID, because the RPC system does not specify what command type (or ID) is being responded to, only what sequence number (which must be associated with the command ID).
 
 ### RPC
 A Punybuf frame has a header, which is just one 32-bit *big-endian* value:
@@ -315,7 +317,7 @@ In the scope of one struct, the extension flags go in order of appearance.
 ```
 Struct = {
 	some_value: Value
-	flags_1: U16.{
+	flags_1: U8.{
 		predefined_flag_1?: String # immediately after this field
 		predefined_flag_2?: String
 			# after predefined_flag_1 of this flag field
@@ -323,6 +325,12 @@ Struct = {
 		ext_flag_1?: Value # immediately after the EL
 		@extension
 		ext_flag_2?: Value # after ext_flag_1
+		@extension
+		ext_flag_3?
+		@extension
+		ext_flag_4?
+		# we need to exhaust this flag field in order to not get
+		# a compiler error
 	}
 	flags_2: U16.{
 		predefined_flag_1_again?: String # immedately after this field

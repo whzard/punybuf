@@ -260,6 +260,8 @@ Each extension is defined on an existing flag field and its presence is indicate
 
 Extensions on flag fields may only be defined until the flag fields are exhausted. If our flag field's type is `U8`, for example, it may only hold 8 bits and thus cannot carry more than 8 flags. If our flag field is exhausted, we can't add extensions to it.
 
+New extensions with values (as in, not just booleans) may only be defined on the first non-exhausted flag field in a struct.
+
 After we've exhausted all flag fields, not all hope is lost. We can still extend our struct further, by using the [`@extension_flags`](Attributes.md#extension_flags) attribute.
 
 ```pbd

@@ -1,0 +1,46 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@flags(64)
+Flags = Flags
+
+@builtin
+@flags(4)
+MiniFlags = MiniFlags
+
+ExtensibleStruct = {
+	field: Builtin
+	field_2: Flags
+	flags_1: Flags.{
+		native_flag?
+		native_flag_value?: Builtin
+		@extension
+		extension_flag?
+		@extension
+		extension_flag_value?: Builtin
+	}
+	flags_2: Flags.{
+		another_native_flag?
+		@extension
+		legal_non_blocking_flag?
+	}
+}
+
+AlsoOkay = {
+	field: Builtin
+	field_2: Flags
+	flags_1: MiniFlags.{
+		native_flag?
+		native_flag_value?: Builtin
+		@extension
+		extension_flag?
+		@extension
+		extension_flag_value?: Builtin
+	}
+	flags_2: Flags.{
+		another_native_flag?
+		@extension
+		legal_non_blocking_flag?
+	}
+}
