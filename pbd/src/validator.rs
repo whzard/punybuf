@@ -485,7 +485,9 @@ impl<'d> PunybufValidator<'d> {
 		Ok(())
 	}
 	fn validate_flags<'n, 'f: 'n>(
-		&self, owner: &Owner, flags: &'f Vec<PBFieldFlag>,
+		&self, owner: &Owner, field: &PBField,
+		// TODO: maybe just unwrap the flags from the field?
+		flags: &'f Vec<PBFieldFlag>,
 		non_exhausted_field: Option<(&String, &Span)>,
 		seen_names: &mut Vec<(&'n str, &'n Span, SeenNameType)>
 	)
@@ -580,7 +582,7 @@ impl<'d> PunybufValidator<'d> {
 								)
 							),
 							diagnostic!(Info,
-								owner.get_name().1.clone(),
+								field.name_span.clone(),
 								format!(
 									"in this flag field..."
 								)
@@ -795,7 +797,7 @@ impl<'d> PunybufValidator<'d> {
 					},
 				}
 				self.validate_flags(
-					owner, flags,
+					owner, field, flags,
 					prev_non_exhausted_field, &mut seen_names
 				)?;
 			}
