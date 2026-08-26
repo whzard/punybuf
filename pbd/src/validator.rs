@@ -567,7 +567,7 @@ impl<'d> PunybufValidator<'d> {
 						non_ex.name_span,
 						format!(
 							"blocked extending of {}",
-							maybe_anon!(non_ex, "flag field `{}`", "this anonymous flag field")
+							maybe_anon!(non_ex, "flag field `{}`", "an anonymous flag field")
 						),
 						ErrorInfo::instead(vec![
 							diagnostic!(Info,
@@ -589,9 +589,9 @@ impl<'d> PunybufValidator<'d> {
 									.map(|x| x.name_span.clone())
 									.unwrap_or(Span::impossible()),
 								format!(
-									"...this `@extension` means the \
-									previous flag field cannot be \
-									extended in a backwards compatible way"
+									"...this `@extension` means that {} cannot be \
+									extended in a backwards compatible way",
+									maybe_anon!(non_ex, "`{}`", "the previous flag field")
 								)
 							),
 							diagnostic!(Tip,
