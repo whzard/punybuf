@@ -1,0 +1,41 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "pbd",
+      "camelcase": "Pbd",
+      "title": "Punybuf Definition",
+      "scope": "source.pbd",
+      "file-types": [
+        "pbd"
+      ],
+      "injection-regex": "^pbd$",
+      "class-name": "TreeSitterPbd"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "A definition for the punybuf serialization format",
+    "authors": [
+      {
+        "name": "whezard",
+        "url": ""
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/whzard/punybuf/",
+      "funding": ""
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": true,
+    "java": false,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": true,
+    "zig": false
+  }
+}

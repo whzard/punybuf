@@ -1,0 +1,61 @@
+{
+  "name": "tree-sitter-pbd",
+  "version": "0.1.0",
+  "description": "A definition for the punybuf serialization format",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whzard/punybuf/.git"
+  },
+  "funding": "",
+  "license": "MIT",
+  "author": {
+    "name": "whezard",
+    "url": ""
+  },
+  "main": "bindings/node",
+  "types": "bindings/node",
+  "keywords": [
+    "incremental",
+    "parsing",
+    "tree-sitter",
+    "pbd"
+  ],
+  "files": [
+    "grammar.js",
+    "tree-sitter.json",
+    "binding.gyp",
+    "prebuilds/**",
+    "bindings/node/*",
+    "queries/*",
+    "src/**",
+    "*.wasm"
+  ],
+  "dependencies": {
+    "node-addon-api": "^8.5.0",
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "prebuildify": "^6.0.1",
+    "tree-sitter": "^0.25.0",
+    "tree-sitter-cli": "^0.26.13"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.25.0"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "install": "node-gyp-build",
+    "prestart": "tree-sitter build --wasm",
+    "start": "tree-sitter playground --quiet",
+    "test": "node --test bindings/node/*_test.js"
+  },
+  "allowScripts": {
+    "tree-sitter@0.25.1": true,
+    "tree-sitter-cli@0.26.13": true
+  }
+}
