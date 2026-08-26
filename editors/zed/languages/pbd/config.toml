@@ -1,0 +1,4 @@
+name = "Punybuf definition"
+grammar = "pbd"
+path_suffixes = ["pbd"]
+line_comments = ["# "]

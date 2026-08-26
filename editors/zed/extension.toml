@@ -1,0 +1,12 @@
+id = "language-pbd"
+name = "Punybuf definition"
+version = "0.0.1"
+schema_version = 1
+authors = ["whezard <me@whezard.net>"]
+description = "Punybuf definition language support"
+repository = "https://github.com/whzard/punybuf"
+
+[grammars.pbd]
+repository = "https://github.com/whzard/punybuf"
+path = "tree-sitter-pbd/"
+rev = "16e30b375c6c56ee6b9cdf3b65c4bd9114a7266b"
