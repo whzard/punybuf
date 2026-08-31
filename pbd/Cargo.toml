@@ -7,7 +7,9 @@ edition = "2024"
 strip = true
 
 [dependencies]
-clap = { version = "4.5.37", features = ["cargo"]}
+# TODO: remove this dependency when compiling pbd as a library
+# Ideally, compile the pbd tool completely separately
+clap = { version = "4.5.37", features = ["cargo"] }
 crc = "3.2.1"
 json = "0.12.4"
 markdown = "1.0.0"

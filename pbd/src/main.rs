@@ -26,6 +26,7 @@ mod resolver;
 use resolver::LayerResolver;
 
 mod converter;
+use converter::ConvertJSON;
 
 mod codegen;
 use codegen::{RustCodegen, HTMLCodegen};
@@ -105,7 +106,7 @@ fn main() {
 
 			} else if out_file.ends_with(".json") {
 				file_type = "JSON";
-				converter::convert_full_definition(&def)
+				def.to_json()
 
 			} else if out_file.ends_with(".htm") || out_file.ends_with(".html") {
 				file_type = "HTML";
@@ -136,7 +137,7 @@ fn main() {
 		}
 
 		if !quiet {
-			println!("{}", converter::convert_full_definition(&def));
+			println!("{}", def.to_json());
 		}
 
 		Ok(())

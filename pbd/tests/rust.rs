@@ -1,9 +1,16 @@
 // Custom built harness to check the correctness of the compiled
 // rust code from pbd.
 
-use std::{cmp, env, fmt::Write, fs::{self, canonicalize}, hash::{DefaultHasher, Hash, Hasher}, io::Read, mem, ops::{Index, IndexMut}, panic::{self, catch_unwind}, path::Path, process::{Command, Stdio}, sync::mpsc::sync_channel, thread, time::SystemTime};
+use std::{
+	cmp, env, fmt::Write,
+	fs::{self, canonicalize}, mem, ops::Index,
+	panic::{self, catch_unwind}, path::Path,
+	process::Command,
+	sync::mpsc::sync_channel,
+	thread, time::SystemTime
+};
 use json::JsonValue;
-use punybuf::{PunybufParser, RustCodegen, convert_full_definition};
+use punybuf::{PunybufParser, RustCodegen, ConvertJSON};
 
 pub const RED: &str = "\x1b[91m";
 pub const BLUE: &str = "\x1b[94m";
@@ -20,6 +27,7 @@ enum TestResult {
 	Pass,
 	Warning(String),
 	Fail(String),
+	#[allow(unused)]
 	Skipped
 }
 
@@ -192,9 +200,8 @@ punybuf_common = {{ path = "../../../../rust-punybuf_common" }}
 	"#)).expect("failed to write to Cargo.toml");
 	
 	if is_dirty(name) {
-		// TODO: just make PunybufDefinition public instead of using JSON
-		// parsing (ugh)
-		let converted = convert_full_definition(&def);
+		// TODO: Don't parse JSON, instead use the public API of PunybufDefinition
+		let converted = def.to_json();
 		let value = json::parse(&converted).expect("invalid json produced lol");
 
 		ensure_tests(name, value);

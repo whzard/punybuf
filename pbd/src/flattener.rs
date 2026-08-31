@@ -14,7 +14,7 @@ pub(crate) const PB_CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_CKSUM);
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub(crate) struct PBTypeRef {
+pub struct PBTypeRef {
 	pub(crate) reference: String,
 	pub(crate) reference_span: Span,
 	pub(crate) generics: Vec<PBTypeRef>,
@@ -33,9 +33,41 @@ pub(crate) struct PBTypeRef {
 	pub(crate) is_global: bool,
 }
 
+#[allow(dead_code)]
+impl PBTypeRef {
+	pub fn reference(&self) -> (&str, &Span) {
+		(&self.reference, &self.reference_span)
+	}
+	/// Generic arguments of this reference, like `String` in `Array<String>`
+	pub fn generics(&self) -> (&Vec<PBTypeRef>, &Span) {
+		(&self.generics, &self.generic_span)
+	}
+	/// The resolved layer of the reference
+	pub fn layer(&self) -> Option<u32> {
+		// This is only available in the public API post-resolution
+		self.resolved_layer
+	}
+	/// Whether the `.layer()` is the highest layer of the
+	/// definition.
+	pub fn is_highest_layer(&self) -> bool {
+		// This is only available in the public API post-resolution
+		self.is_highest_layer
+	}
+	/// Whether this references a generic parameter, like
+	/// ```pbd
+	/// Thing<T> = {
+	///   inner: T  # <-- here
+	/// }
+	/// ```
+	pub fn is_generic(&self) -> bool {
+		// This is only available in the public API post-resolution
+		!self.is_global
+	}
+}
+
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub(crate) struct PBFieldFlag {
+pub struct PBFieldFlag {
 	pub(crate) name: String,
 	pub(crate) name_span: Span,
 	pub(crate) value: Option<PBTypeRef>,
@@ -43,9 +75,25 @@ pub(crate) struct PBFieldFlag {
 	pub(crate) doc: String,
 }
 
+#[allow(dead_code)]
+impl PBFieldFlag {
+	pub fn name(&self) -> (&str, &Span) {
+		(&self.name, &self.name_span)
+	}
+	pub fn value(&self) -> Option<&PBTypeRef> {
+		self.value.as_ref()
+	}
+	pub fn attrs(&self) -> &HashMap<String, Option<String>> {
+		&self.attrs
+	}
+	pub fn doc(&self) -> &str {
+		&self.doc
+	}
+}
+
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub(crate) struct PBField {
+pub struct PBField {
 	pub(crate) name: String,
 	pub(crate) name_span: Span,
 	pub(crate) anonymous: bool,
@@ -55,9 +103,38 @@ pub(crate) struct PBField {
 	pub(crate) doc: String,
 }
 
+#[allow(dead_code)]
+impl PBField {
+	pub fn name(&self) -> (&str, &Span) {
+		(&self.name, &self.name_span)
+	}
+	pub fn value(&self) -> &PBTypeRef {
+		&self.value
+	}
+	/// Whether this is a flag field and is "anonymous", as in defined like
+	/// ```pbd
+	///   UInt.{   # <-- this
+	///     # ...
+	///   }
+	/// ```
+	pub fn anonymous(&self) -> bool {
+		self.anonymous
+	}
+	pub fn attrs(&self) -> &HashMap<String, Option<String>> {
+		&self.attrs
+	}
+	pub fn doc(&self) -> &str {
+		&self.doc
+	}
+	/// `Some()` if this is a flag field
+	pub fn flags(&self) -> Option<&Vec<PBFieldFlag>> {
+		self.flags.as_ref()
+	}
+}
+
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub(crate) struct PBEnumVariant {
+pub struct PBEnumVariant {
 	pub(crate) name: String,
 	pub(crate) name_span: Span,
 	pub(crate) discriminant: u8,
@@ -66,6 +143,29 @@ pub(crate) struct PBEnumVariant {
 	pub(crate) doc: String,
 }
 
+#[allow(dead_code)]
+impl PBEnumVariant {
+	pub fn name(&self) -> (&str, &Span) {
+		(&self.name, &self.name_span)
+	}
+	pub fn discriminant(&self) -> u8 {
+		self.discriminant
+	}
+	pub fn value(&self) -> Option<&PBTypeRef> {
+		self.value.as_ref()
+	}
+	pub fn attrs(&self) -> &HashMap<String, Option<String>> {
+		&self.attrs
+	}
+	pub fn doc(&self) -> &str {
+		&self.doc
+	}
+}
+
+// TODO: instead of including the same fields in all the
+// variants of this enum, maybe create a new enum with just
+// the "meat" of the type definition. Also, maybe expose that
+// enum directly to the API
 #[derive(Debug, Clone)]
 #[allow(unused)]
 pub(crate) enum PBTypeDef {
@@ -121,11 +221,11 @@ impl PBTypeDef {
 			Self::Struct { generic_params, generic_span, .. } => (generic_params, generic_span)
 		}
 	}
-	pub(crate) fn get_inline_owner(&self) -> &Option<(String, Span)> {
+	pub(crate) fn get_inline_owner(&self) -> Option<&(String, Span)> {
 		match self {
-			Self::Alias { .. } => &None,
+			Self::Alias { .. } => None,
 			Self::Enum { inline_owner, .. } |
-			Self::Struct { inline_owner, .. } => inline_owner
+			Self::Struct { inline_owner, .. } => inline_owner.as_ref()
 		}
 	}
 	pub(crate) fn get_attrs(&self) -> &HashMap<String, Option<String>> {
@@ -158,11 +258,79 @@ impl PBTypeDef {
 	}
 }
 
+/// A read-only view of a Punybuf type
+pub struct PunybufType<'a>(&'a PBTypeDef);
+
+#[allow(dead_code)]
+impl<'s> PunybufType<'s> {
+	pub fn name(&self) -> (&str, &Span) {
+		self.0.get_name()
+	}
+	pub fn generics(&self) -> (&Vec<String>, &Span) {
+		self.0.get_generics()
+	}
+	/// If defined inline, the type name and span of the type that
+	/// defined this inline, for example:
+	/// ```pbd
+	/// Thing = {
+	///   owned: Inlined {
+	///     field: String
+	///   }
+	/// }
+	/// ```
+	/// ```ignore
+	/// Inlined.inline_owner() // Some("Thing", ...)
+	/// ```
+	pub fn inline_owner(&self) -> Option<&(String, Span)> {
+		self.0.get_inline_owner()
+	}
+	pub fn attrs(&self) -> &HashMap<String, Option<String>> {
+		self.0.get_attrs()
+	}
+	pub fn doc(&self) -> &str {
+		self.0.get_doc()
+	}
+	pub fn layer(&self) -> u32 {
+		*self.0.get_layer()
+	}
+	/// Whether this type is defined at the highest layer
+	pub fn is_highest_layer(&self) -> bool {
+		self.0.is_highest_layer()
+	}
+	// TODO: the following API sucks. Not sure how to change it without
+	// exposing all the enum values - Maybe see on PBTypeDef
+	/// If this type is an enum, get its variants, `None` otherwise
+	pub fn as_enum(&self) -> Option<&Vec<PBEnumVariant>> {
+		match self.0 {
+			PBTypeDef::Enum { variants, .. } => Some(&variants),
+			_ => None
+		}
+	}
+	/// If this type is a struct, get its fields, `None` otherwise
+	pub fn as_struct(&self) -> Option<&Vec<PBField>> {
+		match self.0 {
+			PBTypeDef::Struct { fields, .. } => Some(&fields),
+			_ => None
+		}
+	}
+	/// If this type is an alias, get the aliased type, `None` otherwise
+	pub fn as_alias(&self) -> Option<&PBTypeRef> {
+		match self.0 {
+			PBTypeDef::Alias { alias, .. } => Some(&alias),
+			_ => None
+		}
+	}
+}
+
 #[derive(Debug, Clone)]
 #[allow(unused)]
-pub(crate) enum PBCommandArg {
+/// The argument to a Punybuf command.
+pub enum PBCommandArg {
+	/// No argument, like `cmd: () -> ...`
 	None,
+	/// A single reference, like `cmd: Type -> ...`
 	Ref(PBTypeRef),
+	/// A struct argument, like `cmd: { ... } -> ...`
 	Struct {
 		fields: Vec<PBField>,
 	}
@@ -185,6 +353,40 @@ pub(crate) struct PBCommandDef {
 	pub(crate) is_highest_layer: bool,
 }
 
+/// A read-only view of a Punybuf command
+pub struct PunybufCommand<'a>(&'a PBCommandDef);
+
+#[allow(dead_code)]
+impl<'s> PunybufCommand<'s> {
+	pub fn name(&self) -> (&str, &Span) {
+		(&self.0.name, &self.0.name_span)
+	}
+	pub fn argument(&self) -> (&PBCommandArg, &Span) {
+		(&self.0.argument, &self.0.argument_span)
+	}
+	pub fn attrs(&self) -> &HashMap<String, Option<String>> {
+		&self.0.attrs
+	}
+	pub fn doc(&self) -> &str {
+		&self.0.doc
+	}
+	pub fn layer(&self) -> u32 {
+		self.0.layer
+	}
+	pub fn id(&self) -> u32 {
+		self.0.command_id
+	}
+	pub fn ret(&self) -> &PBTypeRef {
+		&self.0.ret
+	}
+	pub fn err(&self) -> (&Vec<PBEnumVariant>, &Span) {
+		(&self.0.err, &self.0.err_span)
+	}
+	pub fn is_highest_layer(&self) -> bool {
+		self.0.is_highest_layer
+	}
+}
+
 #[derive(Debug, Clone)]
 #[allow(unused)]
 pub struct PunybufDefinition {
@@ -202,6 +404,21 @@ impl PunybufDefinition {
 			includes_common,
 			context_inline_owner: None,
 		}
+	}
+}
+
+// allow(dead_code_pub_in_binary) does not work for some reason
+#[allow(dead_code)]
+impl PunybufDefinition {
+	/// Whether the definition has `include common` somewhere
+	pub fn includes_common(&self) -> bool {
+		self.includes_common
+	}
+	pub fn types(&self) -> impl Iterator<Item = PunybufType<'_>> {
+		self.types.iter().map(|n| PunybufType(n))
+	}
+	pub fn commands(&self) -> impl Iterator<Item = PunybufCommand<'_>> {
+		self.commands.iter().map(|n| PunybufCommand(n))
 	}
 }
 

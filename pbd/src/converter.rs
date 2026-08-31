@@ -212,27 +212,39 @@ fn convert_command(cmd: &PBCommandDef) -> json::JsonValue {
 	}
 }
 
-pub fn convert_full_definition(def: &PunybufDefinition) -> String {
-	json::stringify(json::object! {
-		includes_common: def.includes_common,
-		types: def.types.iter().map(convert_type).collect::<Vec<_>>(),
-		commands: def.commands.iter().map(convert_command).collect::<Vec<_>>(),
-	})
+/// Import this trait if you wish to convert your Punybuf definitions
+/// to and from the JSON IR.
+pub trait ConvertJSON {
+	fn to_json(&self) -> String;
+	fn from_json(input: &str) -> Result<Self, String> where Self: Sized;
 }
 
-pub fn from_json(input: &str) -> Result<PunybufDefinition, String> {
-	let mut object = json::parse(input).map_err(|e| e.to_string())?;
-	let includes_common = object.remove("includes_common").as_bool().unwrap_or(false);
-	let mut object_types = object.remove("types");
-	let mut result = PunybufDefinition::new(includes_common);
-	for obj_typ in object_types.members_mut() {
-		result.types.push(type_from_json(obj_typ)?);
+impl ConvertJSON for PunybufDefinition {
+	/// Converts the definition to the JSON IR and returns the result
+	/// as a String
+	fn to_json(&self) -> String {
+		json::stringify(json::object! {
+			includes_common: self.includes_common,
+			types: self.types.iter().map(convert_type).collect::<Vec<_>>(),
+			commands: self.commands.iter().map(convert_command).collect::<Vec<_>>(),
+		})
 	}
-	let mut object_commands = object.remove("commands");
-	for obj_cmd in object_commands.members_mut() {
-		result.commands.push(cmd_from_json(obj_cmd)?);
+	/// Parses JSON and returns a PunybufDefinition. On invalid JSON
+	/// returns Err(String) with a textual representation of the error.
+	fn from_json(input: &str) -> Result<Self, String> {
+		let mut object = json::parse(input).map_err(|e| e.to_string())?;
+		let includes_common = object.remove("includes_common").as_bool().unwrap_or(false);
+		let mut object_types = object.remove("types");
+		let mut result = PunybufDefinition::new(includes_common);
+		for obj_typ in object_types.members_mut() {
+			result.types.push(type_from_json(obj_typ)?);
+		}
+		let mut object_commands = object.remove("commands");
+		for obj_cmd in object_commands.members_mut() {
+			result.commands.push(cmd_from_json(obj_cmd)?);
+		}
+		Ok(result)
 	}
-	Ok(result)
 }
 
 fn type_from_json(obj_typ: &mut JsonValue) -> Result<PBTypeDef, String> {

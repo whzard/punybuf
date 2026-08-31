@@ -2,8 +2,10 @@ use std::collections::HashSet;
 
 use crate::flattener::{PBCommandArg, PBCommandDef, PBEnumVariant, PBField, PBTypeDef, PBTypeRef, PunybufDefinition};
 
+// TODO: allow for search functionality in the template
 const DEFAULT_TEMPLATE: &str = include_str!("../../baked/template.html");
 
+/// HTML Documentation generator
 pub struct HTMLCodegen<'def> {
 	definition: &'def PunybufDefinition,
 	template: &'def str,
@@ -24,6 +26,10 @@ fn find_start_at(slice: &str, at: usize, pat: &str) -> Option<usize> {
 }
 
 impl<'d> HTMLCodegen<'d> {
+	/// Construct the HTML Codegen. The `template` is the template after which
+	/// the docs will be generated. This codegen replaces the keywords `%sidebar`
+	/// and `%main` in the template. Check the default template at the Punybuf
+	/// repo to see what CSS classes it uses.
 	pub fn new(def: &'d PunybufDefinition, template: Option<&'d str>) -> Self {
 		Self {
 			definition: def,

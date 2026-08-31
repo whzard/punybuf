@@ -140,10 +140,6 @@ pub(crate) enum DeclarationValue {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct Declaration {
-	// For now these are staying as
-	// pub(crate), but
-	// TODO?: in the future, make them part of the
-	// API?
 	pub(crate) symbol: String,
 	pub(crate) symbol_span: Span,
 	pub(crate) value: DeclarationValue,
@@ -161,7 +157,7 @@ impl<'parser> Parser<'parser> {
 			peekable: tokens.iter().peekable()
 		}
 	}
-	pub fn parse(&mut self) -> Result<Vec<Declaration>, PunybufError> {
+	pub(crate) fn parse(&mut self) -> Result<Vec<Declaration>, PunybufError> {
 		let mut decls = Vec::new();
 		let mut nextdoc: Option<(&str, &Span)> = None;
 		let mut next_attrs = HashMap::<&String, (&Option<String>, &Span)>::new();

@@ -60,10 +60,10 @@ impl<'a> Owner<'a> {
 			Owner::TypeOwner(tp) => tp.get_name()
 		}
 	}
-	fn get_inline_owner(&self) -> &Option<(String, Span)> {
+	fn get_inline_owner(&self) -> Option<&(String, Span)> {
 		match self {
 			Owner::TypeOwner(tp) => tp.get_inline_owner(),
-			Owner::CommandOwner(_) => &None
+			Owner::CommandOwner(_) => None
 		}
 	}
 	fn get_attrs(&self) -> &HashMap<String, Option<String>> {

@@ -47,6 +47,7 @@ pub trait HashMapConvertible<K, V>: Sized {
 }
 "#;
 
+/// Rust code generator
 pub struct RustCodegen<'def> {
 	use_tokio: bool,
 	uses_common: bool,
@@ -1556,6 +1557,7 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, "\n\n");
 		}
 	}
+	/// Generate the Rust code
 	pub fn codegen(mut self) -> String {
 		if self.loud && self.use_tokio {
 			eprintln!(

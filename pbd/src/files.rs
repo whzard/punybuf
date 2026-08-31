@@ -3,10 +3,8 @@ use std::{env, fs::read_to_string, io, path::Path, rc::Rc};
 use crate::{
 	diagnostic, errors::{
 		BOLD, NORMAL, PunybufError, YELLOW
-	}, lexer::{IncludeDisallowed, IncludeHandler, Lexer, Loc, Span, Token}, pb_err
+	}, lexer::{IncludeHandler, Lexer, Loc, Span, Token}, pb_err
 };
-
-const COMMON: &str = include_str!("../baked/common.pbd");
 
 fn io_err(error: &str) -> io::Error {
 	io::Error::other(error)
@@ -39,16 +37,6 @@ struct FileIncludeHandler {
 
 impl IncludeHandler for FileIncludeHandler {
 	fn handle_include(&mut self, include_path: String, include_span: Span) -> Result<Vec<Token>, PunybufError> {
-		if include_path == "common" {
-			if self.included.iter().find(|(i, _)| i == "common").is_some() {
-				// Including common multiple times is okay
-				return Ok(vec![]);
-			}
-			self.included.push((include_path, include_span.clone()));
-			let mut rust_is_funny = IncludeDisallowed;
-			let mut l = Lexer::new(COMMON.to_string(), "<common>".into(), &mut rust_is_funny);
-			return l.lex();
-		}
 		let real_path = self.root_path.join(Path::new(&include_path));
 
 		// unwrapping is fine since this path is from joining two

@@ -1,20 +1,22 @@
-// TODO: rewrite the entire error interface, because it sucks to use rn
-// 😭
-
 use std::fmt::Display;
 
 use crate::lexer::Span;
 
+/// A `PunybufError` means that the Punybuf definition is
+/// faulty or invalid. The primary interface to that error
+/// is the `Debug` implementation, although one can also call
+/// `error` and `iter` to get the diagnostics inside that error
 #[derive(Debug)]
 pub struct PunybufError {
-	pub display_error: bool,
-	pub error: Diagnostic,
-	pub before_error: Vec<Diagnostic>,
-	pub after_error: Vec<Diagnostic>,
+	pub(crate) display_error: bool,
+	pub(crate) error: Diagnostic,
+	pub(crate) before_error: Vec<Diagnostic>,
+	pub(crate) after_error: Vec<Diagnostic>,
 }
 
+#[allow(dead_code)]
 impl PunybufError {
-	pub fn default() -> Self {
+	pub(crate) fn default() -> Self {
 		Self {
 			error: Diagnostic {
 				content: "".into(), span: Span::impossible(), level: InfoLevel::Info
@@ -22,7 +24,7 @@ impl PunybufError {
 			display_error: true, before_error: vec![], after_error: vec![]
 		}
 	}
-	pub fn wrap_before(self, mut wrapper: PunybufError) -> PunybufError {
+	pub(crate) fn wrap_before(self, mut wrapper: PunybufError) -> PunybufError {
 		for d in self.before_error {
 			wrapper.before_error.push(d);
 		}
@@ -33,7 +35,7 @@ impl PunybufError {
 
 		wrapper
 	}
-	pub fn wrap_after(self, mut wrapper: PunybufError) -> PunybufError {
+	pub(crate) fn wrap_after(self, mut wrapper: PunybufError) -> PunybufError {
 		for d in self.before_error {
 			wrapper.after_error.push(d);
 		}
@@ -44,7 +46,9 @@ impl PunybufError {
 
 		wrapper
 	}
-	fn explain(&self) -> String {
+	/// Produce a human-readable string for the terminal explaining
+	/// where the error happened.
+	pub fn explain(&self) -> String {
 		let mut result = String::new();
 		for (i, info) in self.before_error.iter().enumerate() {
 			if i != 0 {
@@ -67,6 +71,18 @@ impl PunybufError {
 
 		result
 	}
+	/// The actual error diagnostic. Note that this might be different to
+	/// how the error is displayed in the console. For that, use the
+	/// `Display` impl of this type.
+	pub fn error(&self) -> &Diagnostic {
+		&self.error
+	}
+	/// Iterate over all diagnostics in the error.
+	/// The iterator returns the diagnostics by reference, but they may
+	/// be cloned.
+	pub fn iter(&self) -> PunybufErrorIter<'_> {
+		PunybufErrorIter { error: self, n: 0 }
+	}
 }
 
 impl Display for PunybufError {
@@ -75,31 +91,60 @@ impl Display for PunybufError {
 	}
 }
 
-pub const RED: &str = "\x1b[91m";
-pub const BLUE: &str = "\x1b[94m";
-pub const YELLOW: &str = "\x1b[93m";
-pub const NORMAL: &str = "\x1b[0m";
-pub const GRAY: &str = "\x1b[37m";
+pub struct PunybufErrorIter<'e> {
+	n: usize,
+	error: &'e PunybufError
+}
+
+impl<'e> Iterator for PunybufErrorIter<'e> {
+	type Item = &'e Diagnostic;
+	fn next(&mut self) -> Option<Self::Item> {
+		let mut n = self.n;
+		if n < self.error.before_error.len() {
+			self.n += 1;
+			return Some(&self.error.before_error[n]);
+		}
+		n -= self.error.before_error.len();
+		if n == 0 && self.error.display_error {
+			self.n += 1;
+			return Some(&self.error.error);
+		}
+		if self.error.display_error {
+			n -= 1;
+		}
+		if n < self.error.after_error.len() {
+			self.n += 1;
+			return Some(&self.error.after_error[n]);
+		}
+		None
+	}
+}
+
+pub(crate) const RED: &str = "\x1b[91m";
+pub(crate) const BLUE: &str = "\x1b[94m";
+pub(crate) const YELLOW: &str = "\x1b[93m";
+pub(crate) const NORMAL: &str = "\x1b[0m";
+pub(crate) const GRAY: &str = "\x1b[37m";
 #[allow(unused)] // this is not true, this constant is used in main.rs
-pub const GREEN: &str = "\x1b[32m";
+pub(crate) const GREEN: &str = "\x1b[32m";
 #[allow(unused)]
-pub const INTENSE: &str = "\x1b[97m";
-pub const BOLD: &str = "\x1b[1m";
+pub(crate) const INTENSE: &str = "\x1b[97m";
+pub(crate) const BOLD: &str = "\x1b[1m";
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum InfoLevel {
 	Error, Warning, Tip, Info
 }
 impl InfoLevel {
-	pub fn get_ansi_color(&self) -> &str {
+	fn get_ansi_color(&self) -> &str {
 		match self {
 			Self::Error => RED,
 			Self::Tip | Self::Info => BLUE,
 			Self::Warning => YELLOW
 		}
 	}
-	pub fn get_symbol(&self) -> &str {
+	fn get_symbol(&self) -> &str {
 		match self {
 			Self::Error | Self::Warning => "~",
 			Self::Tip | Self::Info => "-",
@@ -114,13 +159,20 @@ fn byte_index(string: &str, idx: usize) -> usize {
 // TODO: rework this whole system because it's really
 // crappy. Ideally make `PunybufError` just a case of
 // `InfoExplanation`
-#[derive(Debug)]
+/// A Punybuf diagnostic message.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Diagnostic {
+	/// The actual content of the diagnostic message
 	pub content: String,
+	/// The place in the source code at which the diagnostic occurred
 	pub span: Span,
 	pub level: InfoLevel,
 }
 impl Diagnostic {
+	/// Produce a human-readable string for the terminal, explaining
+	/// the diagnostic and pointing at the correct place in the source
+	/// code.
 	pub fn explain(&self) -> String {
 		if self.span == Span::impossible() {
 			let color = self.level.get_ansi_color();
@@ -205,10 +257,11 @@ impl Diagnostic {
 }
 
 #[derive(Debug)]
-pub struct ErrorInfo {
-	pub before_error: Vec<Diagnostic>,
-	pub after_error: Vec<Diagnostic>,
-	pub explain_error: bool
+pub(crate) struct ErrorInfo {
+	// Can't make these pub(self) because of macros
+	pub(crate) before_error: Vec<Diagnostic>,
+	pub(crate) after_error: Vec<Diagnostic>,
+	pub(crate) explain_error: bool
 }
 #[allow(unused)]
 impl ErrorInfo {

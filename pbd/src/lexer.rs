@@ -6,6 +6,8 @@ use std::{
 
 use crate::{errors::{ErrorInfo, PunybufError, parser_err}, pb_err};
 
+const COMMON: &str = include_str!("../baked/common.pbd");
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum TokenData {
 	Symbol(String),
@@ -31,8 +33,11 @@ pub(crate) enum TokenData {
 }
 
 #[derive(Clone, PartialEq, Eq)]
+/// Position in a file
 pub struct Loc {
+	/// The 0-indexed row
 	pub row: usize,
+	/// The 0-indexed column
 	pub col: usize,
 }
 
@@ -48,6 +53,7 @@ impl Loc {
 	}
 }
 
+/// A range in the source code file
 #[derive(Clone, PartialEq, Eq)]
 pub struct Span {
 	pub(crate) loc_start: Loc,
@@ -62,6 +68,7 @@ impl Debug for Span {
 	}
 }
 
+#[allow(dead_code)]
 impl Span {
 	pub fn impossible() -> Self {
 		Self {
@@ -205,10 +212,16 @@ impl Display for Token {
 	}
 }
 
+/// A trait to handle the `include` keyword.
 pub trait IncludeHandler {
-	fn handle_include(&mut self, include_path: String, include_span: Span) -> Result<Vec<Token>, PunybufError>;
+	/// Handle the `include` keyword. The `include_path` is the trimmed string passed
+	/// after the `include` keyword. Including `common` is handled automatically
+	/// and this function will not get called in that case.
+	fn handle_include(&mut self, include_path: String, include_span: Span)
+		-> Result<Vec<Token>, PunybufError>;
 }
 
+/// Set this as the [`IncludeHandler`] to disallow including other files.
 pub struct IncludeDisallowed;
 impl IncludeHandler for IncludeDisallowed {
 	fn handle_include(&mut self, _: String, include_span: Span) -> Result<Vec<Token>, PunybufError> {
@@ -216,7 +229,7 @@ impl IncludeHandler for IncludeDisallowed {
 	}
 }
 
-pub struct Lexer<'a, I> {
+pub(crate) struct Lexer<'a, I> {
 	pub(crate) contents: Rc<String>,
 	pub(crate) file_name: Rc<String>,
 	pub(crate) current_loc: Loc,
@@ -284,6 +297,21 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 				file_contents: self.contents.clone()
 			}
 		}
+	}
+	fn include(&mut self, include_path: String, include_span: Span)
+		-> Result<Vec<Token>, PunybufError>
+	{
+		if include_path == "common" {
+			if self.includes_common {
+				// Including common multiple times is okay
+				return Ok(vec![]);
+			}
+			self.includes_common = true;
+			let mut rust_is_funny = IncludeDisallowed;
+			let mut l = Lexer::new(COMMON.to_string(), "<common>".into(), &mut rust_is_funny);
+			return l.lex();
+		}
+		self.include_handler.handle_include(include_path, include_span)
 	}
 	fn lex_error(&self, error: String) -> PunybufError {
 		pb_err!(
@@ -548,12 +576,8 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 									col: loc_start.col + path.len(),
 								};
 
-								if path == "common" {
-									self.includes_common = true;
-								}
-
 								self.current_loc = loc_end.clone();
-								let mut included_tokens = self.include_handler.handle_include(path, Span {
+								let mut included_tokens = self.include(path, Span {
 									loc_start, loc_end, file_name: self.file_name.clone(),
 									file_contents: self.contents.clone()
 								})?;
