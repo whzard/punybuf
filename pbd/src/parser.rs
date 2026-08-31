@@ -939,8 +939,8 @@ impl<'parser> Parser<'parser> {
 				_ => {
 					return Err(parser_err!(
 						token.span,
-						"expected an identifier for a optional field name, got `{token}`; \
-						a optional field identifier should be have a `?` at the end"
+						"expected an identifier for a flag name, got `{token}`; \
+						a flag identifier should be have a `?` at the end"
 					));
 				}
 			}
