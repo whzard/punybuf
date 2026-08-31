@@ -129,10 +129,8 @@ Bytes = Array<U8>
 	since UTF-8 is a variable-length encoding, instead it represents the length in
 	bytes.
 
-	This type may be treated as a literal `Bytes` type, except it also SHOULD be
-	valid UTF-8. During deserialization, all invalid code bytes or code points
-	MUST be replaced with the unicode replacement character and deserialization
-	MUST NOT fail.
+	This type may be treated as a literal `Bytes` type, except it also MUST be
+	valid UTF-8. If the data is not valid UTF-8, deserialization MUST fail.
 ]
 @builtin
 @rust:needs_lifetime

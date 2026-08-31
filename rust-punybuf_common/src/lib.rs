@@ -424,19 +424,6 @@ impl<'a> From<Cow<'a, [u8]>> for Bytes<'a> {
 	}
 }
 
-pub(crate) fn from_utf8_lossy_owned(v: Vec<u8>) -> String {
-	if let Cow::Owned(string) = String::from_utf8_lossy(&v) {
-		string
-	} else {
-		// SAFETY: `String::from_utf8_lossy`'s contract ensures that if
-		// it returns a `Cow::Borrowed`, it is a valid UTF-8 string.
-		// Otherwise, it returns a new allocation of an owned `String`, with
-		// replacement characters for invalid sequences, which is returned
-		// above.
-		unsafe { String::from_utf8_unchecked(v) }
-	}
-}
-
 
 impl<'x> PBType<'x> for Cow<'x, str> {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
@@ -460,7 +447,9 @@ impl<'x> PBType<'x> for Cow<'x, str> {
 		let result = &slice.get(0..len).unwrap();
 		let new_slice = &slice.get(len..slice.len()).unwrap();
 		*slice = new_slice;
-		Ok(String::from_utf8_lossy(result))
+		Ok(str::from_utf8(result).map_err(|e|
+			io::Error::new(io::ErrorKind::InvalidData, e)
+		)?.into())
 	}
 }
 
@@ -480,7 +469,9 @@ impl<'x> PBType<'x> for String {
 			eof!();
 		}
 
-		Ok(from_utf8_lossy_owned(this))
+		Ok(String::from_utf8(this).map_err(|e|
+			io::Error::new(io::ErrorKind::InvalidData, e)
+		)?)
 	}
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		let len = self.len() as u64;

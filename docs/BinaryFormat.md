@@ -45,7 +45,7 @@ In practice, the same as `Array<U8>`, i.e. a `UInt` representing the length foll
 Since the length is represented by a `UInt` and the largest value that can be represented with it is 1152921573328437376, this would theoretically allow for up to a little over ***1024 Pebibytes*** (!) of encoded information. Punybuf values are meant to be small-to-medium sized so they can fit into memory. To prevent crashes due to malicious or malformed values, implementations must set a hard limit of at most **4 Gibibytes (4294967296 bytes)** and are encouraged to set lower limits and to allow the user to choose the limit themselves. This also applies to `String`s and `Array`s (limit the amount of items in the case of the latter).
 
 #### String
-The same as `Bytes`, except the contents of this should be valid UTF-8 data. Note that the length of the string is in bytes, not code points. If the contents are not valid UTF-8, they should be lossily converted, i.e. replaced by the unicode replacement character.
+The same as `Bytes`, except the contents of this should be valid UTF-8 data. Note that the length of the string is in bytes, not code points. If the contents are not valid UTF-8, deserialization MUST fail.
 
 Implementations must limit the maximum length, as decribed in the [previous section](#bytes).
 

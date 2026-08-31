@@ -3,7 +3,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub use std::borrow::Cow;
 
-use crate::{MAX_ARRAY_LENGTH, MAX_BYTES_LENGTH, from_utf8_lossy_owned};
+use crate::{MAX_ARRAY_LENGTH, MAX_BYTES_LENGTH};
 pub use crate::{UInt, Done, Void, Bytes, PBCommand, PBCommandExt, PBType};
 
 /// All Punybuf types implement this trait.
@@ -247,7 +247,9 @@ impl AsyncPBType for String {
 
 		taken.read_to_end(&mut this).await?;
 
-		Ok(from_utf8_lossy_owned(this))
+		Ok(String::from_utf8(this).map_err(|e|
+			io::Error::new(io::ErrorKind::InvalidData, e)
+		)?)
 	}
 	async fn serialize_async<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> io::Result<()> {
 		let len = self.len() as u64;
