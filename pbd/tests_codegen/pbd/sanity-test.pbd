@@ -32,3 +32,13 @@ Other = {
 	field_4: Array<UInt>
 	field_5: Done
 }
+
+voidCommand: {
+	one: Other
+	two: SomeEnum
+} -> Void
+
+someCommand: {
+	one: Other
+	two: SomeEnum
+} -> SomeAlias ![SomeError]

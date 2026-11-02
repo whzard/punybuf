@@ -27,7 +27,6 @@ enum TestResult {
 }
 
 fn main() -> Result<(), ()> {
-	println!("hi");
 	let mut skip = false;
 	let var_skip = env::var("SKIP_CODEGEN").unwrap_or("0".into());
 	if var_skip == "1" {
@@ -60,9 +59,9 @@ fn main() -> Result<(), ()> {
 		inputs.push(file.path());
 	}
 
-	// let parallelism: usize = thread::available_parallelism()
-	// 	.unwrap_or(8.try_into().unwrap()).into();
-	let parallelism = 1;
+	let parallelism: usize = thread::available_parallelism()
+		.unwrap_or(8.try_into().unwrap()).into();
+	// let parallelism = 1;
 
 	let (sender, receiver) = sync_channel::<(String, TestResult)>(16);
 
@@ -114,7 +113,6 @@ fn main() -> Result<(), ()> {
 			}
 		}).expect("failed to launch thread");
 	}
-	println!("hi");
 
 	// Drop the sender so that the iterator can finish
 	drop(sender);
@@ -126,11 +124,9 @@ fn main() -> Result<(), ()> {
 	for test_name in skipped {
 		println!("{test_name} - {GRAY}skipped{NORMAL}");
 	}
-	println!("hi");
 
 	// TODO: collect results and report later for better UX
 	for (test_name, result) in receiver.iter() {
-		println!("hi");
 		println!("{test_name} - {}", match &result {
 			TestResult::Pass => format!("{BOLD}{GREEN}pass{NORMAL}"),
 			TestResult::Fail(error) => {
@@ -174,6 +170,7 @@ fn main() -> Result<(), ()> {
 	}
 }
 
+// TODO: let this be true and let the tests pass
 const GEN_ASYNC: bool = false;
 
 fn run_test(name: &str, file: impl AsRef<Path>) -> Option<String> {
@@ -260,9 +257,9 @@ punybuf_common = {{ path = "../../../../rust-punybuf_common" }}
 /// Checks if the file is "dirty," as in the source pbd file was edited
 /// before the rust code. When editing this test harness, change this
 /// function to always return true.
-#[allow(unused)]
+// #[allow(unused)]
 fn is_dirty(name: &str) -> bool {
-	return true;
+	// return true;
 	let Ok(main) = fs::read_to_string(format!("tests_codegen/rust/{name}/src/main.rs")) else {
 		return true;
 	};
@@ -453,6 +450,8 @@ struct RustAlternator<'a> {
 	definition: &'a JsonValue,
 	generic_args: Option<JsonValue>,
 	generic_params: Vec<String>,
+	/// This is needed in order to have deep nested structures
+	/// without crashing the process.
 	depth: usize,
 	#[allow(deprecated)]
 	hasher: SipHasher

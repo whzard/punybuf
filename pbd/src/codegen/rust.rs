@@ -690,9 +690,10 @@ impl<'def> RustCodegen<'def> {
 		}
 		appendf!(self, "}}\n"); // enum CommandReturn
 
-
 		appendf!(self, "impl{} CommandReturn{} {{\n",
-			self.gen_lifetime_generics_if(ret_needs_lifetime),
+			// We always need the lifetime for the impl block, since
+			// the `deserialize_return` method references them
+			self.gen_lifetime_generics_if(true),
 			self.gen_lifetime_generics_if(ret_needs_lifetime)
 		);
 
