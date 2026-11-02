@@ -2,12 +2,7 @@
 // rust code from pbd.
 
 use std::{
-	cmp, env, fmt::Write,
-	fs::{self, canonicalize}, mem, ops::Index,
-	panic::{self, catch_unwind}, path::Path,
-	process::Command,
-	sync::mpsc::sync_channel,
-	thread, time::SystemTime
+	cmp, env, fmt::Write, fs::{self, canonicalize}, hash::{DefaultHasher, Hasher, SipHasher}, mem, ops::Index, panic::{self, catch_unwind}, path::Path, process::Command, sync::mpsc::sync_channel, thread, time::SystemTime
 };
 use json::JsonValue;
 use punybuf::{PunybufParser, RustCodegen, ConvertJSON};
@@ -130,6 +125,7 @@ fn main() -> Result<(), ()> {
 		println!("{test_name} - {GRAY}skipped{NORMAL}");
 	}
 
+	// TODO: collect results and report later for better UX
 	for (test_name, result) in receiver.iter() {
 		println!("{test_name} - {}", match &result {
 			TestResult::Pass => format!("{BOLD}{GREEN}pass{NORMAL}"),
@@ -444,28 +440,18 @@ struct RustAlternator<'a> {
 	definition: &'a JsonValue,
 	generic_args: Option<JsonValue>,
 	generic_params: Vec<String>,
-	string: usize,
-	bytes: usize,
-	varint: usize,
-	int: usize,
-	uint: usize,
-	enum_variant: usize,
-	float: usize,
+	#[allow(deprecated)]
+	hasher: SipHasher
 }
 
+#[allow(deprecated)]
 impl<'a> RustAlternator<'a> {
 	fn new(definition: &'a JsonValue) -> Self {
 		Self {
 			definition,
 			generic_args: None,
 			generic_params: Vec::new(),
-			string: 0,
-			bytes: 0,
-			varint: 0,
-			int: 0,
-			uint: 0,
-			enum_variant: 0,
-			float: 0
+			hasher: SipHasher::new_with_keys(24, 42),
 		}
 	}
 	fn write_type_from_decl(&mut self, w: &mut String, ty: &JsonValue) {
@@ -495,10 +481,10 @@ impl<'a> RustAlternator<'a> {
 	fn write_enum(&mut self, mut w: &mut String, ty: &JsonValue) {
 		let variants = ty.index("variants");
 		let num_vars = variants.len();
-		let min = cmp::min(num_vars, self.enum_variant);
+		self.hasher.write(b"enum");
+		let n = self.hasher.finish() as usize;
 		// eprintln!("{num_vars} {ty}");
-		self.enum_variant = (self.enum_variant + 1) % num_vars;
-		let selected_variant = variants.index(min);
+		let selected_variant = variants.index(n % num_vars);
 		let value = selected_variant.index("value");
 		if value.is_null() {
 			// Rust needs to know the type
@@ -562,23 +548,27 @@ impl<'a> RustAlternator<'a> {
 		write!(w, "}}").unwrap();
 	}
 	fn get_string(&mut self) -> &'static str {
-		let string = TEST_STRINGS[self.string];
-		self.string = (self.string + 1) % TEST_STRINGS.len();
+		self.hasher.write(b"string");
+		let n = self.hasher.finish() as usize;
+		let string = TEST_STRINGS[n % TEST_STRINGS.len()];
 		string
 	}
 	fn get_integer(&mut self) -> u8 {
-		let number = TEST_NUMS[self.uint];
-		self.uint = (self.uint + 1) % TEST_NUMS.len();
+		self.hasher.write(b"integer");
+		let n = self.hasher.finish() as usize;
+		let number = TEST_NUMS[n % TEST_NUMS.len()];
 		number
 	}
 	fn get_float(&mut self) -> f32 {
-		let float = TEST_FLOATS[self.float];
-		self.float = (self.float + 1) % TEST_FLOATS.len();
+		self.hasher.write(b"float");
+		let n = self.hasher.finish() as usize;
+		let float = TEST_FLOATS[n % TEST_FLOATS.len()];
 		float
 	}
 	fn get_uint(&mut self) -> u64 {
-		let uint = TEST_UINTS[self.varint];
-		self.varint = (self.varint + 1) % TEST_UINTS.len();
+		self.hasher.write(b"uint");
+		let n = self.hasher.finish() as usize;
+		let uint = TEST_UINTS[n % TEST_UINTS.len()];
 		uint
 	}
 	fn write_builtin_ref(
