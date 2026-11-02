@@ -1,0 +1,24 @@
+@builtin
+Builtin = Builtin
+
+@builtin
+@flags(64)
+Flags = Flags
+
+MaybeSelf = {
+	field: Builtin
+	flags: Flags.{
+		self?: MaybeSelf
+	}
+}
+
+Harder = [
+	Nil,
+	Thing: Builtin,
+	Circle: Circle
+]
+
+Circle = {
+	field: Builtin
+	back: Harder
+}

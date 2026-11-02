@@ -1,0 +1,21 @@
+include common
+
+Value = [
+	@default
+	Nil,
+	String: String,
+	UInt: UInt,
+	Float: F64,
+	Array: Array<Value>,
+	Map: Map<Value, Value>,
+]
+
+Node = [
+	Parent: ParentNode,
+	Leaf: String
+]
+
+ParentNode = {
+	a: Node
+	b: Node
+}

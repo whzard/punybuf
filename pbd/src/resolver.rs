@@ -7,8 +7,7 @@
 // and you will forever be trapped in the Resolver's domain.
 
 use std::{
-	collections::{HashMap, HashSet, VecDeque},
-	u32, vec,
+	collections::{BTreeSet, HashMap, HashSet, VecDeque}, u32, vec,
 };
 
 use crate::flattener::{
@@ -30,7 +29,10 @@ struct Dependent {
 }
 
 pub struct LayerResolver {
+	/// name of dependee -> set of dependents
 	dependencies: HashMap<String, HashSet<Dependent>>,
+	/// (name, layer) of dependent -> set of dependees (only types)
+	direct_deps: HashMap<(String, u32), HashSet<(String, u32)>>,
 	pub should_resolve_aliases: bool,
 }
 
@@ -54,6 +56,7 @@ impl LayerResolver {
 	pub fn new(should_resolve_aliases: bool) -> Self {
 		Self {
 			dependencies: HashMap::new(),
+			direct_deps: HashMap::new(),
 			should_resolve_aliases,
 		}
 	}
@@ -85,11 +88,11 @@ impl LayerResolver {
 			self.dependencies.insert(depends_on.to_string(), hs);
 		}
 	}
-	fn analyze_struct_dependencies(&mut self, fields: &Vec<PBField>, dependent: Dependent) {
+	fn analyze_struct_dependents(&mut self, fields: &Vec<PBField>, dependent: Dependent) {
 		for field in fields {
 			let clone = dependent.clone();
 			self.new_dependent(&field.value, clone);
-			
+
 			let Some(flags) = &field.flags else { continue };
 			let clone_again = dependent.clone();
 
@@ -100,14 +103,14 @@ impl LayerResolver {
 			}
 		}
 	}
-	fn analyze_enum_dependencies(&mut self, variants: &Vec<PBEnumVariant>, dependent: Dependent) {
+	fn analyze_enum_dependents(&mut self, variants: &Vec<PBEnumVariant>, dependent: Dependent) {
 		for variant in variants {
 			let Some(refr) = &variant.value else { continue };
 
 			self.new_dependent(&refr, dependent.clone());
 		}
 	}
-	fn analyze_type_dependencies(&mut self, tp: &PBTypeDef) {
+	fn analyze_dependents(&mut self, tp: &PBTypeDef) {
 		let dep = Dependent {
 			name: tp.get_name().0.to_string(),
 			layer: *tp.get_layer(),
@@ -115,17 +118,17 @@ impl LayerResolver {
 		};
 		match tp {
 			PBTypeDef::Struct { fields, .. } => {
-				self.analyze_struct_dependencies(fields, dep);
+				self.analyze_struct_dependents(fields, dep);
 			}
 			PBTypeDef::Enum { variants, .. } => {
-				self.analyze_enum_dependencies(variants, dep);
+				self.analyze_enum_dependents(variants, dep);
 			}
 			PBTypeDef::Alias { alias, .. } => {
 				self.new_dependent(&alias, dep);
 			}
 		}
 	}
-	fn analyze_command_dependencies(&mut self, cmd: &PBCommandDef) {
+	fn analyze_command_dependents(&mut self, cmd: &PBCommandDef) {
 		let dep = Dependent {
 			name: cmd.name.clone(),
 			layer: cmd.layer,
@@ -136,7 +139,7 @@ impl LayerResolver {
 		}
 		match &cmd.argument {
 			PBCommandArg::Struct { fields } => {
-				self.analyze_struct_dependencies(fields, dep.clone());
+				self.analyze_struct_dependents(fields, dep.clone());
 			}
 			PBCommandArg::Ref(rf) => {
 				self.new_dependent(&rf, dep.clone());
@@ -144,7 +147,7 @@ impl LayerResolver {
 			PBCommandArg::None => {}
 		}
 
-		self.analyze_enum_dependencies(&cmd.err, dep);
+		self.analyze_enum_dependents(&cmd.err, dep);
 	}
 	fn get_highest_layer<'def>(definition: &'def PunybufDefinition, name: &str, limit_layer: u32) -> Option<TypeOrCmdDef<'def>> {
 		let mut possible_commands = definition.commands.iter()
@@ -222,10 +225,10 @@ impl LayerResolver {
 		}
 
 		for cmd in &new_commands {
-			self.analyze_command_dependencies(cmd);
+			self.analyze_command_dependents(cmd);
 		}
 		for tp in &new_types {
-			self.analyze_type_dependencies(tp);
+			self.analyze_dependents(tp);
 		}
 
 		definition.types.append(&mut new_types);
@@ -271,10 +274,10 @@ impl LayerResolver {
 		}
 
 		for tp in &definition.types {
-			self.analyze_type_dependencies(tp);
+			self.analyze_dependents(tp);
 		}
 		for cmd in &definition.commands {
-			self.analyze_command_dependencies(cmd);
+			self.analyze_command_dependents(cmd);
 		}
 		let mut index = 0;
 		while index < definition.types.len() {
@@ -283,7 +286,160 @@ impl LayerResolver {
 		}
 
 		self.resolve_references(definition);
+
+		// This is all incredibly inefficient, but oh well
+		for tp in &definition.types {
+			self.analyze_direct_dependencies(tp);
+		}
+
+		// Commands cannot depend on other commands
+		let mut index = 0;
+		while index < definition.types.len() {
+			self.track_circular_type(definition, index);
+			index += 1;
+		}
 	}
+}
+
+impl LayerResolver {
+	fn add_direct_dependency(&mut self, dependent: &str, dep_layer: u32, rf: &PBTypeRef) {
+		if !rf.is_global {
+			return;
+		}
+		self.direct_deps.entry((dependent.to_owned(), dep_layer))
+			.and_modify(|hs| {
+				hs.insert((rf.reference.clone(), rf.resolved_layer.unwrap()));
+			})
+			.or_insert_with(|| {
+				let mut hs = HashSet::new();
+				hs.insert((rf.reference.clone(), rf.resolved_layer.unwrap()));
+				hs
+			});
+		for g in &rf.generics {
+			self.add_direct_dependency(dependent, dep_layer, g);
+		}
+	}
+	/// Populates the `direct_deps` field with all types that appear in the definition of
+	/// a type.
+	fn analyze_direct_dependencies(&mut self, tp: &PBTypeDef) {
+		if tp.get_attrs().contains_key("@builtin") {
+			return;
+		}
+		match tp {
+			PBTypeDef::Alias { name, layer, alias, .. } => {
+				self.add_direct_dependency(name, *layer, alias);
+			}
+			PBTypeDef::Enum { name, layer, variants, .. } => {
+				for var in variants {
+					if let Some(refr) = &var.value {
+						self.add_direct_dependency(name, *layer, refr);
+					}
+				}
+			}
+			PBTypeDef::Struct { name, layer, fields, .. } => {
+				for fld in fields {
+					self.add_direct_dependency(name, *layer, &fld.value);
+					let Some(flags) = &fld.flags else { continue };
+					for flag in flags {
+						let Some(val) = &flag.value else { continue };
+						self.add_direct_dependency(name, *layer, val);
+					}
+				}
+			}
+		}
+	}
+	/// Query the dependencies of the resolved type. Will return `None`
+	/// unless called post-resolution.
+	fn query_direct_dependencies(&self, name: &str, layer: u32) -> Option<&HashSet<(String, u32)>> {
+		self.direct_deps.get(&(name.to_owned(), layer))
+	}
+	/// Query whether the (name, layer) pair is circular w.r.t. path
+	// TODO: Currently, if A depends on B and B depends on A, both types will get
+	// their references as "circular." This is a minor performance hit since
+	// both types would need to be boxed. We should instead consider stopping
+	// with our markings after the loop is resolved. (i.e. remove the circular
+	// dependencies from the "direct deps" list - only after we're done with a
+	// full type)
+	fn query_is_circular(&self, name: &str, layer: u32, path: &mut Vec<(String, u32)>) -> bool {
+		let Some(hs) = self.query_direct_dependencies(name, layer) else { return false };
+
+		// TODO: use something like IndexSet
+		let result: Vec<_> = hs.iter().collect();
+
+		// TODO: use a HashSet here?
+		path.push((name.to_owned(), layer));
+
+		for dep in result {
+			if path.iter().any(|x| x == dep) {
+				// We found a thing in the path that we depend on.
+				return true;
+			}
+			if self.query_is_circular(&dep.0, dep.1, path) {
+				// A transitive dependency is recursive w.r.t. path, that means we are recursive as well.
+				return true;
+			};
+		}
+
+		path.pop();
+
+		false
+	}
+	fn mark_recursive_ref(&self, refr: &mut PBTypeRef, path: &mut Vec<(String, u32)>) {
+		if !refr.is_global {
+			return;
+		}
+		if self.query_is_circular(
+			&refr.reference, refr.resolved_layer.expect("references should be resolved"),
+			path
+		) {
+			refr.is_circular = true;
+		}
+
+		for generic in &mut refr.generics {
+			self.mark_recursive_ref(generic, path);
+		};
+	}
+	/// Mark circular references of the type as circular.
+	fn track_circular_type(&mut self, definition: &mut PunybufDefinition, index: usize) {
+		let tp = &mut definition.types[index];
+		match tp {
+			PBTypeDef::Struct { name, layer, fields, .. } => {
+				for field in fields {
+					self.mark_recursive_ref(
+						&mut field.value,
+						&mut vec![(name.clone(), *layer)]
+					);
+					if let Some(flags) = &mut field.flags {
+						for flag in flags {
+							let Some(refr) = &mut flag.value else { continue };
+							self.mark_recursive_ref(
+								refr,
+								&mut vec![(name.clone(), *layer)]
+							);
+						}
+					}
+				}
+			},
+			PBTypeDef::Enum { name, layer, variants, .. } => {
+				for variant in variants {
+					let Some(refr) = &mut variant.value else { continue };
+					self.mark_recursive_ref(
+						refr,
+						&mut vec![(name.clone(), *layer)]
+					);
+				}
+			},
+			PBTypeDef::Alias { name, layer, alias, .. } => {
+				self.mark_recursive_ref(
+					alias,
+					&mut vec![(name.clone(), *layer)]
+				);
+			},
+		};
+	}
+}
+
+impl LayerResolver {
 	fn resolve_alias_generics(params: &Vec<String>, input: &Vec<PBTypeRef>, generics: &mut Vec<PBTypeRef>) {
 		for output_generic_param in generics {
 			// @resolve
@@ -433,10 +589,7 @@ impl LayerResolver {
 		// This function is quite a big hack. It performs a lot of
 		// unnecessary allocation and has to have a whole new type for itself
 		// and is generally inefficient (for the sake of *relative* beauty).
-		// This is all done to fight the borrow checker, which i am not happy about
-		// below all this mess, you will find an unsafe version of this function
-		// it's not only unsafe, it's also just plain undefined behavior
-		// (it works though!) more details below
+		// This is all done to fight the borrow checker, which i am not happy about.
 		// 
 		// pull requests welcome, if you want to eliminate the unnecessary allocations
 		// (provided your code won't be uglier than this lol)

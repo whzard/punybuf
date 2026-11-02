@@ -106,7 +106,8 @@ fn convert_ref(refr: &PBTypeRef) -> json::JsonValue {
 		refr.reference.as_str(),
 		refr.resolved_layer,
 		refr.generics.iter().map(|r| convert_ref(r)).collect::<Vec<_>>(),
-		refr.is_highest_layer
+		refr.is_highest_layer,
+		refr.is_circular,
 	]
 }
 
@@ -408,7 +409,8 @@ fn variants_from_json(obj_variants: &mut JsonValue) -> Result<Vec<PBEnumVariant>
 }
 
 fn ref_from_json(obj_ref: &mut JsonValue) -> Result<PBTypeRef, String> {
-	// Ref = [name: string, layer: number | null, generic_params: Ref[], is_highest_layer: boolean]
+	// Ref = [name: string, layer: number | null, generic_params: Ref[],
+	//   is_highest_layer: boolean, is_circular: boolean]
 	let mut iter = obj_ref.members_mut();
 	let name = iter.next().ok_or("invalid reference: no name")?.to_string();
 	let layer = iter.next().ok_or("invalid reference: no layer")?.as_u32()
@@ -420,6 +422,8 @@ fn ref_from_json(obj_ref: &mut JsonValue) -> Result<PBTypeRef, String> {
 	}
 	let is_highest_layer = iter.next().ok_or("invalid reference: no is_highest_layer")?
 		.as_bool().unwrap_or(false);
+	let is_circular = iter.next().map(|x| x.as_bool())
+		.flatten().unwrap_or(false);
 	Ok(PBTypeRef {
 		reference: name,
 		reference_span: Span::impossible(),
@@ -427,6 +431,7 @@ fn ref_from_json(obj_ref: &mut JsonValue) -> Result<PBTypeRef, String> {
 		generic_span: Span::impossible(),
 		resolved_layer: Some(layer),
 		is_highest_layer,
+		is_circular,
 		// TODO: currently not included in json
 		is_global: true,
 	})

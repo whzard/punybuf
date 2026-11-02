@@ -19,6 +19,7 @@ pub struct PBTypeRef {
 	pub(crate) reference_span: Span,
 	pub(crate) generics: Vec<PBTypeRef>,
 	pub(crate) generic_span: Span,
+	// TODO: attach all the items below to another type with "resolution"
 	/// the actual layer of the type this is referring to
 	/// 
 	/// (this is only valid post-resolution)
@@ -27,6 +28,10 @@ pub struct PBTypeRef {
 	/// 
 	/// (this is only valid post-resolution)
 	pub(crate) is_highest_layer: bool,
+	/// is this a circular reference?
+	/// 
+	/// (this is only valid post-resolution)
+	pub(crate) is_circular: bool,
 	/// is it global or generic?
 	/// 
 	/// (this is only valid post-resolution)
@@ -479,6 +484,7 @@ impl PunybufDefinition {
 					reference_span: name_span,
 					generics, generic_span, resolved_layer: None,
 					is_global: true,
+					is_circular: false,
 					is_highest_layer: false
 				}
 			}
@@ -497,6 +503,7 @@ impl PunybufDefinition {
 					generic_span: Span::impossible(),
 					resolved_layer: None,
 					is_global: true,
+					is_circular: false,
 					is_highest_layer: false
 				}
 			}

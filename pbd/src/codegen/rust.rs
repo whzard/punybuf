@@ -313,8 +313,20 @@ impl<'def> RustCodegen<'def> {
 			format!("{}Layer{}", refr.reference, refr.resolved_layer.unwrap())
 		}
 	} */
-	/// Generates a reference, including generics
+	/// Generates a reference, including generics & boxing
 	fn gen_reference(&self, refr: &PBTypeRef, turbofish: bool) -> String {
+		self.gen_reference_maybe_box(refr, turbofish, true)
+	}
+	// We still kind of box too much, especially if we can't tell whether
+	// the surrounding type is part of a Vec, like Map<K, V> = Array<KeyPair<K, V>>.
+	// This has an impact on ser/deser performance because of indirection. However,
+	// tracking whivh types depend on which should be left to the resolver, and the
+	// `is_circular` parameter currently is true for ANY circular reference even if
+	// it would be "handled" in the parent type.
+	fn gen_reference_maybe_box(&self, refr: &PBTypeRef, turbofish: bool, boxed: bool) -> String {
+		macro_rules! should_box {
+			() => { boxed && refr.is_circular }
+		}
 		if self.uses_common {
 			match refr.reference.as_str() {
 				s @ (
@@ -338,15 +350,27 @@ impl<'def> RustCodegen<'def> {
 				_ => {}
 			}
 		}
+		let mut is_vec = false;
 		let mut result = if self.uses_common && refr.reference == "Array" {
+			is_vec = true;
 			"Vec".to_string()
 		} else if refr.is_highest_layer || refr.resolved_layer.is_none() {
 			refr.reference.clone()
 		} else {
 			format!("{}Layer{}", refr.reference, refr.resolved_layer.unwrap())
 		};
+		if should_box!() {
+			if turbofish {
+				result.insert_str(0, "Box::<");
+			} else {
+				result.insert_str(0, "Box<");
+			}
+		}
 		let needs_lifetime = self.needs_lifetime_ref(refr);
 		if refr.generics.is_empty() && !needs_lifetime {
+			if should_box!() {
+				result.push('>');
+			}
 			return result;
 		}
 
@@ -362,9 +386,12 @@ impl<'def> RustCodegen<'def> {
 			if i != 0 {
 				result.push_str(", ");
 			}
-			result.push_str(&self.gen_reference(generics, turbofish));
+			result.push_str(&self.gen_reference_maybe_box(generics, turbofish, !is_vec && !should_box!()));
 		}
 		result.push('>');
+		if should_box!() {
+			result.push('>');
+		}
 		return result;
 	}
 	fn get_command_name(&self, cmd: &PBCommandDef) -> String {
@@ -1102,11 +1129,13 @@ impl<'def> RustCodegen<'def> {
 		for field in fields {
 			if let Some(flags) = &field.flags {
 				for flag in flags {
-					appendf!(self, "            {}: flag_{},\n", flag.name, flag.name);
+					appendf!(self, "            {}: flag_{},\n",
+						flag.name, flag.name);
 				}
 			} else {
 				// We don't want to expose the actual flags value in the struct
-				appendf!(self, "            {}: field_{},\n", field.name, field.name);
+				appendf!(self, "            {}: field_{},\n",
+					field.name, field.name);
 			}
 		}
 		appendf!(self, "        }})\n");
