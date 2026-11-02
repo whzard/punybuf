@@ -85,12 +85,14 @@ type Schema = {
 	}[]
 }
 
-type Ref = [name: string, layer: number | null, generic_params: Ref[], is_highest_layer: boolean]
+type Ref = [name: string, layer: number | null, generic_params: Ref[], is_highest_layer: boolean, recursive: boolean]
 
 type Attrs = Record<string, string | null>
 
 // * The `is_highest_layer` property is useful in
 //   understanding whether to generate the layer postfix or not.  
+// * The `recursive` property is used in understanding whether the
+//   reference contains a type in which it's contained.
 ```
 
 # Writing a codegen
