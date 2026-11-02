@@ -35,6 +35,18 @@ pub trait PBType<'x> {
 	}
 }
 
+impl<'x, T> PBType<'x> for Box<T> where T: PBType<'x> {
+	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
+		self.deref().serialize(w)
+	}
+	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> where Self: Sized {
+		T::deserialize_stream(r).map(|x| Box::new(x))
+	}
+	fn deserialize<'a: 'x>(slice: &mut &'a [u8]) -> io::Result<Self> where Self: Sized {
+		T::deserialize(slice).map(|x| Box::new(x))
+	}
+}
+
 pub type Void = ();
 
 impl<'x> PBType<'x> for Void {
