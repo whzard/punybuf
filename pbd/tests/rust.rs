@@ -196,6 +196,9 @@ edition = "2024"
 [dependencies]
 tokio = {{ version = "1.45.0", features = ["io-util", "rt", "macros", "sync"] }}
 punybuf_common = {{ path = "../../../../rust-punybuf_common" }}
+
+[profile.dev]
+debug = false
 	"#)).expect("failed to write to Cargo.toml");
 	
 	if is_dirty(name) {
