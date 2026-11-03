@@ -13,12 +13,12 @@ pub use crate::{UInt, Done, Void, Bytes, PBCommand, PBCommandExt, PBType};
 /// but in practice, all Punybuf types will implement
 /// `PBType` (non-async), which does support attributes
 pub trait AsyncPBType: Send + Sync {
-	fn serialize_async<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> impl std::future::Future<Output = io::Result<()>> + Send;
+	fn serialize_async<'a, W: AsyncWriteExt + Unpin + Send>(&'a self, w: &'a mut W) -> impl std::future::Future<Output = io::Result<()>> + Send + 'a;
 	fn deserialize_async<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> impl std::future::Future<Output = io::Result<Self>> + Send where Self: Sized;
 }
 
 impl<T> AsyncPBType for Box<T> where T: AsyncPBType {
-	fn serialize_async<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> impl std::future::Future<Output = io::Result<()>> + Send {
+	fn serialize_async<'a, W: AsyncWriteExt + Unpin + Send>(&'a self, w: &'a mut W) -> impl std::future::Future<Output = io::Result<()>> + Send + 'a {
 		self.deref().serialize_async(w)
 	}
 	async fn deserialize_async<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> io::Result<Self> where Self: Sized {
