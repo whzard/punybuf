@@ -511,6 +511,45 @@ impl<'def> RustCodegen<'def> {
 			},
 		}
 	}
+	fn ref_has_circular(&self, rf: &PBTypeRef) -> bool {
+		if rf.is_circular { return true }
+		if rf.generics.iter().any(|g| self.ref_has_circular(g)) { return true }
+		return false;
+	}
+	/// Does this type have circular references inside?
+	/// This does not care about Vec<...>s because the Rust
+	/// compiler will fail to construct the type
+	fn has_circular(&self, tp: &PBTypeDef) -> bool {
+		match tp {
+			PBTypeDef::Struct  { fields, .. } => {
+				for f in fields {
+					if self.ref_has_circular(&f.value) {
+						return true;
+					}
+					if let Some(flags) = &f.flags {
+						for flag in flags {
+							if flag.value.as_ref().is_some_and(|v| self.ref_has_circular(v)) {
+								return true;
+							}
+						}
+					}
+				}
+			},
+			PBTypeDef::Enum  { variants, .. } => {
+				for v in variants {
+					if v.value.as_ref().is_some_and(|v| self.ref_has_circular(v)) {
+						return true;
+					}
+				}
+			},
+			PBTypeDef::Alias  { alias, .. } => {
+				if self.ref_has_circular(alias) {
+					return true;
+				}
+			},
+		}
+		return false;
+	}
 	fn gen_derive(&mut self) {
 		appendf!(self, "#[derive(Debug, Clone, PartialEq)]\n");
 	}
@@ -1533,18 +1572,18 @@ impl<'def> RustCodegen<'def> {
 			if self.use_tokio {
 				appendf!(self, "impl{} AsyncPBType for {} {{\n",
 					self.get_type_impl_generics_async(tp), self.get_type_name(tp));
-				// Currently, if the type references itself in any way,
-				// this line will fail to compile, with a message
-				// "cycle detected when computing type of ..."
-				// Async recursion isn't really supported in rust,
-				// possibly related to this issue:
-				// https://github.com/rust-lang/rust/issues/135062
-				// TODO: test this on the new solver
-				appendf!(self, "    // If you get an compile time error here saying\n");
-				appendf!(self, "    // \"cycle detected when computing type of...,\"\n");
-				appendf!(self, "    // that's because when using async, currently\n");
-				appendf!(self, "    // no cyclic types are supported at all. Sorry!\n");
-				appendf!(self, "    async fn serialize_async<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.write_async());
+				let has_circular = self.has_circular(tp);
+				if has_circular {
+					appendf!(self, "    // This async function is boxed, because the type\n");
+					appendf!(self, "    // contains circular references, which would prevent\n");
+					appendf!(self, "    // the Rust compiler for lowering the async function\n");
+					appendf!(self, "    #[allow(refining_impl_trait)]\n");
+					appendf!(self, "    fn serialize_async<'a, W: {}>(&'a self, w: &'a mut W) ->\n", self.write_async());
+					appendf!(self, "        std::pin::Pin<Box<dyn Future<Output = io::Result<()>> + Send + 'a>>\n");
+					appendf!(self, "    {{ Box::pin(async move {{\n");
+				} else {
+					appendf!(self, "    async fn serialize_async<W: {}>(&self, w: &mut W) -> io::Result<()> {{\n", self.write_async());
+				}
 				match tp {
 					PBTypeDef::Struct { fields, attrs, .. } => {
 						self.gen_serialize_fields(fields, !attrs.contains_key("@sealed"), true);
@@ -1558,13 +1597,22 @@ impl<'def> RustCodegen<'def> {
 					}
 					_ => unreachable!()
 				}
+				if has_circular {
+					appendf!(self, "    }})\n"); // Box::pin(async {})
+				}
 				appendf!(self, "    }}\n"); // fn serialize_async
 
-				appendf!(self, "    // If you get an compile time error here saying\n");
-				appendf!(self, "    // \"cycle detected when computing type of...,\"\n");
-				appendf!(self, "    // that's because when using async, currently\n");
-				appendf!(self, "    // no cyclic types are supported at all. Sorry!\n");
-				appendf!(self, "    async fn deserialize_async<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.read_async());
+				if has_circular {
+					appendf!(self, "    // This async function is boxed, because the type\n");
+					appendf!(self, "    // contains circular references, which would prevent\n");
+					appendf!(self, "    // the Rust compiler for lowering the async function\n");
+					appendf!(self, "    #[allow(refining_impl_trait)]\n");
+					appendf!(self, "    fn deserialize_async<R: {}>(r: &mut R) ->\n", self.read_async());
+					appendf!(self, "        std::pin::Pin<Box<dyn Future<Output = io::Result<Self>> + Send + '_>>\n");
+					appendf!(self, "    {{ Box::pin(async move {{\n");
+				} else {
+					appendf!(self, "    async fn deserialize_async<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.read_async());
+				}
 				match tp {
 					PBTypeDef::Struct { fields, attrs, .. } => {
 						self.gen_deserialize_fields(fields, !attrs.contains_key("@sealed"), true, true);
@@ -1576,6 +1624,9 @@ impl<'def> RustCodegen<'def> {
 						appendf!(self, "        }})\n");
 					}
 					_ => unreachable!()
+				}
+				if has_circular {
+					appendf!(self, "    }})\n"); // Box::pin(async {})
 				}
 				appendf!(self, "    }}\n"); // fn deserialize_async
 				appendf!(self, "}}\n\n"); // impl PBType
@@ -1589,19 +1640,6 @@ impl<'def> RustCodegen<'def> {
 	}
 	/// Generate the Rust code
 	pub fn codegen(mut self) -> String {
-		if self.loud && self.use_tokio {
-			eprintln!(
-				"{YELLOW}{BOLD}warning:{NORMAL} rust tokio builds are currently broken \
-				for several reasons. see https://github.com/rust-lang/rust/issues/100013 \
-				and https://github.com/rust-lang/rust/issues/135062. \
-				the errors in the generated code will maybe be fixed after those issues \
-				are resolved. sorry!"
-			);
-			eprintln!(
-				"{YELLOW}{BOLD}warning:{NORMAL} if you aren't using any commands \
-				or recursive types, this should probably be fine."
-			);
-		}
 		appendf!(self, "#![allow(nonstandard_style)]\n");
 		appendf!(self, "///! This file was automatically generated by Punybuf.\n");
 		appendf!(self, "///! It's best you don't change anything.\n\n");

@@ -19,3 +19,9 @@ ParentNode = {
 	a: Node
 	b: Node
 }
+
+#[ Not circular reference, but includes one ]
+Tree = {
+	name: String
+	root: ParentNode
+}

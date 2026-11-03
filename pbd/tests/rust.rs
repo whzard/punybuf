@@ -170,8 +170,7 @@ fn main() -> Result<(), ()> {
 	}
 }
 
-// TODO: let this be true and let the tests pass
-const GEN_ASYNC: bool = false;
+const GEN_ASYNC: bool = true;
 
 fn run_test(name: &str, file: impl AsRef<Path>) -> Option<String> {
 	let parsed = PunybufParser::parse_file(&file)
@@ -201,13 +200,16 @@ punybuf_common = {{ path = "../../../../rust-punybuf_common" }}
 debug = false
 	"#)).expect("failed to write to Cargo.toml");
 	
-	if is_dirty(name) {
-		// TODO: Don't parse JSON, instead use the public API of PunybufDefinition
-		let converted = def.to_json();
-		let value = json::parse(&converted).expect("invalid json produced lol");
+	// if is_dirty(name) {
+	// We assume all files are dirty since producing tests
+	// is relatively cheap and this breaks test cases when
+	// the generated JSON is modified, but the test files are not
+	// TODO: Don't parse JSON, instead use the public API of PunybufDefinition
+	let converted = def.to_json();
+	let value = json::parse(&converted).expect("invalid json produced lol");
 
-		ensure_tests(name, value);
-	}
+	ensure_tests(name, value);
+	// }
 
 	let code = RustCodegen::new(GEN_ASYNC, true, &def).codegen();
 	fs::write(format!("tests_codegen/rust/{name}/src/proto.rs"), code)
@@ -257,37 +259,34 @@ debug = false
 	None
 }
 
-/// Checks if the file is "dirty," as in the source pbd file was edited
-/// before the rust code. When editing this test harness, change this
-/// function to always return true.
 // #[allow(unused)]
-fn is_dirty(name: &str) -> bool {
-	// return true;
-	let Ok(main) = fs::read_to_string(format!("tests_codegen/rust/{name}/src/main.rs")) else {
-		return true;
-	};
-	if !main.starts_with("// date = ") {
-		return true;
-	}
-	let mut lines = main.lines();
-	let dateline = lines.next().unwrap();
-	let date = &dateline[("// date = ".len())..];
-	let Ok(rust_date): Result<u64, _> = date.parse() else {
-		return true;
-	};
-	let Ok(meta) = fs::metadata(format!("tests_codegen/pbd/{name}.pbd")) else {
-		return true;
-	};
-	let Ok(pbd_date) = meta.modified() else {
-		return true;
-	};
-	let paramline = lines.next().expect("expected at least 2 lines");
-	if paramline != format!("// {};", if GEN_ASYNC { "async" } else { "sync" }) {
-		return true;
-	}
-	let pbd_date = pbd_date.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
-	pbd_date > rust_date
-}
+// fn is_dirty(name: &str) -> bool {
+// 	// return true;
+// 	let Ok(main) = fs::read_to_string(format!("tests_codegen/rust/{name}/src/main.rs")) else {
+// 		return true;
+// 	};
+// 	if !main.starts_with("// date = ") {
+// 		return true;
+// 	}
+// 	let mut lines = main.lines();
+// 	let dateline = lines.next().unwrap();
+// 	let date = &dateline[("// date = ".len())..];
+// 	let Ok(rust_date): Result<u64, _> = date.parse() else {
+// 		return true;
+// 	};
+// 	let Ok(meta) = fs::metadata(format!("tests_codegen/pbd/{name}.pbd")) else {
+// 		return true;
+// 	};
+// 	let Ok(pbd_date) = meta.modified() else {
+// 		return true;
+// 	};
+// 	let paramline = lines.next().expect("expected at least 2 lines");
+// 	if paramline != format!("// {};", if GEN_ASYNC { "async" } else { "sync" }) {
+// 		return true;
+// 	}
+// 	let pbd_date = pbd_date.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+// 	pbd_date > rust_date
+// }
 
 fn get_rust_name_and_generics(v: &JsonValue) -> String {
 	let mut name = get_rust_name(v);
@@ -456,6 +455,8 @@ struct RustAlternator<'a> {
 	/// This is needed in order to have deep nested structures
 	/// without crashing the process.
 	depth: usize,
+	// The deprecated SipHasher is used here because it allows us
+	// to output deterministic but random-looking output
 	#[allow(deprecated)]
 	hasher: SipHasher
 }
@@ -557,9 +558,11 @@ impl<'a> RustAlternator<'a> {
 						write!(&mut w, "{}, ", flag_set).unwrap();
 						flag_set = !flag_set;
 					} else {
-						if flag_val_set {
+						if flag_val_set && self.depth < 10 {
 							write!(&mut w, "Some(").unwrap();
+							self.depth += 1;
 							self.write_ref(&mut w, flag.index("value"), true);
+							self.depth -= 1;
 							write!(&mut w, "), ").unwrap();
 						} else {
 							// Theoretically, rust might be unable to

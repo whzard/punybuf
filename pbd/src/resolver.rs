@@ -360,7 +360,7 @@ impl LayerResolver {
 	// with our markings after the loop is resolved. (i.e. remove the circular
 	// dependencies from the "direct deps" list - only after we're done with a
 	// full type)
-	fn query_is_circular(&self, name: &str, layer: u32, path: &mut Vec<(String, u32)>) -> bool {
+	fn query_is_circular(&self, name: &str, layer: u32, parent: (&str, u32), path: &mut Vec<(String, u32)>) -> bool {
 		let Some(hs) = self.query_direct_dependencies(name, layer) else { return false };
 
 		// TODO: use something like IndexSet
@@ -370,12 +370,18 @@ impl LayerResolver {
 		path.push((name.to_owned(), layer));
 
 		for dep in result {
-			if path.iter().any(|x| x == dep) {
+			if parent.0 == dep.0 && parent.1 == dep.1 {
 				// We found a thing in the path that we depend on.
 				return true;
 			}
-			if self.query_is_circular(&dep.0, dep.1, path) {
-				// A transitive dependency is recursive w.r.t. path, that means we are recursive as well.
+			if path.iter().any(|x| x == dep) {
+				// This is a circular reference, but it is not circular
+				// w.r.t. parent (so it must be handled elsewhere)
+				return false;
+			}
+			if self.query_is_circular(&dep.0, dep.1, parent, path) {
+				// A transitive dependency is circular w.r.t. parent,
+				// that means we are circular as well.
 				return true;
 			};
 		}
@@ -384,19 +390,20 @@ impl LayerResolver {
 
 		false
 	}
-	fn mark_recursive_ref(&self, refr: &mut PBTypeRef, path: &mut Vec<(String, u32)>) {
+	fn mark_recursive_ref(&self, refr: &mut PBTypeRef, parent: (&str, u32)) {
+		let mut path = vec![];
 		if !refr.is_global {
 			return;
 		}
 		if self.query_is_circular(
 			&refr.reference, refr.resolved_layer.expect("references should be resolved"),
-			path
+			parent, &mut path
 		) {
 			refr.is_circular = true;
 		}
 
 		for generic in &mut refr.generics {
-			self.mark_recursive_ref(generic, path);
+			self.mark_recursive_ref(generic, parent);
 		};
 	}
 	/// Mark circular references of the type as circular.
@@ -407,14 +414,14 @@ impl LayerResolver {
 				for field in fields {
 					self.mark_recursive_ref(
 						&mut field.value,
-						&mut vec![(name.clone(), *layer)]
+						(name, *layer)
 					);
 					if let Some(flags) = &mut field.flags {
 						for flag in flags {
 							let Some(refr) = &mut flag.value else { continue };
 							self.mark_recursive_ref(
 								refr,
-								&mut vec![(name.clone(), *layer)]
+								(name, *layer)
 							);
 						}
 					}
@@ -425,14 +432,14 @@ impl LayerResolver {
 					let Some(refr) = &mut variant.value else { continue };
 					self.mark_recursive_ref(
 						refr,
-						&mut vec![(name.clone(), *layer)]
+						(name, *layer)
 					);
 				}
 			},
 			PBTypeDef::Alias { name, layer, alias, .. } => {
 				self.mark_recursive_ref(
 					alias,
-					&mut vec![(name.clone(), *layer)]
+					(name, *layer)
 				);
 			},
 		};

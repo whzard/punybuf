@@ -22,3 +22,7 @@ Circle = {
 	field: Builtin
 	back: Harder
 }
+
+NonCircular = {
+	depends: Circle
+}
