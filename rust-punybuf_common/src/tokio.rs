@@ -1,4 +1,5 @@
 use std::io::{self, Error};
+use std::ops::Deref;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub use std::borrow::Cow;
@@ -14,6 +15,15 @@ pub use crate::{UInt, Done, Void, Bytes, PBCommand, PBCommandExt, PBType};
 pub trait AsyncPBType: Send + Sync {
 	fn serialize_async<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> impl std::future::Future<Output = io::Result<()>> + Send;
 	fn deserialize_async<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> impl std::future::Future<Output = io::Result<Self>> + Send where Self: Sized;
+}
+
+impl<T> AsyncPBType for Box<T> where T: AsyncPBType {
+	fn serialize_async<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> impl std::future::Future<Output = io::Result<()>> + Send {
+		self.deref().serialize_async(w)
+	}
+	async fn deserialize_async<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> io::Result<Self> where Self: Sized {
+		T::deserialize_async(r).await.map(|x| Box::new(x))
+	}
 }
 
 impl AsyncPBType for Done {
