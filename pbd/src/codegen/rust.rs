@@ -78,6 +78,13 @@ fn deserialize_suffix(stream: bool, is_async: bool) -> &'static str {
 	}
 }
 
+fn is_in_common(name: &str) -> bool {
+	match name {
+		"Map" | "KeyPair" | "Optional" | "Boolean" | "Done" => true,
+		_ => false
+	}
+}
+
 impl<'def> RustCodegen<'def> {
 	pub fn new(use_tokio: bool, gen_docs: bool, def: &'def PunybufDefinition) -> Self {
 		Self {
@@ -320,7 +327,7 @@ impl<'def> RustCodegen<'def> {
 	// We still kind of box too much, especially if we can't tell whether
 	// the surrounding type is part of a Vec, like Map<K, V> = Array<KeyPair<K, V>>.
 	// This has an impact on ser/deser performance because of indirection. However,
-	// tracking whivh types depend on which should be left to the resolver, and the
+	// tracking which types depend on which should be left to the resolver, and the
 	// `is_circular` parameter currently is true for ANY circular reference even if
 	// it would be "handled" in the parent type.
 	fn gen_reference_maybe_box(&self, refr: &PBTypeRef, turbofish: bool, boxed: bool) -> String {
@@ -333,6 +340,7 @@ impl<'def> RustCodegen<'def> {
 					"U8" | "U16" | "U32" | "U64" | "I32" | "I64" | "F32" | "F64"
 				) => return s.to_ascii_lowercase(),
 				s @ "UInt" => return s.to_string(),
+				"Boolean" => return "bool".to_string(),
 				"Bytes" => {
 					return if turbofish {
 						"Bytes::<'x>".to_string()
@@ -350,15 +358,22 @@ impl<'def> RustCodegen<'def> {
 				_ => {}
 			}
 		}
-		let mut is_vec = false;
+		// Whether this type is already boxed, like inside `Array` or `Map`.
+		let mut already_boxed = false;
 		let mut result = if self.uses_common && refr.reference == "Array" {
-			is_vec = true;
+			already_boxed = true;
 			"Vec".to_string()
+		} else if self.uses_common && refr.reference == "Optional" {
+			already_boxed = true;
+			"Option".to_string()
 		} else if refr.is_highest_layer || refr.resolved_layer.is_none() {
 			refr.reference.clone()
 		} else {
 			format!("{}Layer{}", refr.reference, refr.resolved_layer.unwrap())
 		};
+		if self.uses_common && refr.reference == "Map" {
+			already_boxed = true;
+		}
 		if should_box!() {
 			if turbofish {
 				result.insert_str(0, "Box::<");
@@ -386,7 +401,10 @@ impl<'def> RustCodegen<'def> {
 			if i != 0 {
 				result.push_str(", ");
 			}
-			result.push_str(&self.gen_reference_maybe_box(generics, turbofish, !is_vec && !should_box!()));
+			result.push_str(&self.gen_reference_maybe_box(
+				generics, turbofish,
+				!already_boxed && !should_box!()
+			));
 		}
 		result.push('>');
 		if should_box!() {
@@ -449,7 +467,7 @@ impl<'def> RustCodegen<'def> {
 				if i != 0 {
 					result.push_str(", ");
 				}
-				result.push_str(&format!("{}: PBType<'x>", g));
+				result.push_str(&format!("{g}: PBType<'x>"));
 			}
 			result.push('>');
 			result
@@ -1473,12 +1491,7 @@ impl<'def> RustCodegen<'def> {
 				}
 				continue;
 			}
-			if self.uses_common && tp.get_name().0 == "Done" {
-				// HACK: We just skip the `Done` as it's and empty
-				// struct and defined in the common crate
-				// TODO: Move the Map, Done, and all others
-				// to the common crate and do not generate definitions
-				// here.
+			if self.uses_common && is_in_common(tp.get_name().0) {
 				continue;
 			}
 			if tp.get_attrs().contains_key("@map_convertible") {

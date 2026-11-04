@@ -69,13 +69,9 @@ Options:
 
 ## TODO
 - Add native support for more languages
-- Catch self-referential types during validation
 - Implement binary compatibility checks
 - Document capabilities
 - Finish documentation
 - Support `doc`s inside files
-- More tests!
 - Rust codegen: use `u64` instead of `UInt`?
-- Rust: allow self-referential types through indirection
-- Rust: allow any self-referential types with tokio (currently causes a compile time error, see rust_codegen.rs)
 - Rust: finalize the API to be used inside Cargo build scripts.

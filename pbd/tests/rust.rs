@@ -316,10 +316,21 @@ fn get_rust_name(v: &JsonValue) -> String {
 }
 
 fn get_rust_ref_name(name: &str, layer: u32, is_highest_layer: bool) -> String {
+	if name == "Optional" {
+		return "Option".to_string();
+	};
 	if is_highest_layer {
 		name.into()
 	} else {
 		format!("{name}_Layer{layer}")
+	}
+}
+
+fn should_generate_tests(name: &str) -> bool {
+	match name {
+		"Done" | "Boolean" | "Optional" |
+		"Map" | "KeyPair" => false,
+		_ => true
 	}
 }
 
@@ -352,7 +363,8 @@ fn ensure_tests(name: &str, definition: JsonValue) {
 	for ty in types.members() {
 		if ty.index("is").as_str().unwrap_or_default() == "alias" ||
 			ty.index("attrs").has_key("@builtin") ||
-			ty.index("name").as_str().unwrap_or_default() == "Done"
+			!should_generate_tests(ty.index("name")
+				.as_str().unwrap_or_default())
 		{
 			continue;
 		}
@@ -505,13 +517,35 @@ impl<'a> RustAlternator<'a> {
 		let n = self.hasher.finish() as usize;
 		// eprintln!("{num_vars} {ty}");
 		let mut selected_variant = variants.index(n % num_vars);
-		if self.depth >= 10 {
+		if self.depth >= 5 {
+			let mut found = false;
 			// Try to select a variant that doesn't go deeper
 			for candidate in variants.members() {
 				if candidate.index("value").is_null() {
 					selected_variant = candidate;
+					found = true;
 					break;
 				}
+			}
+			if !found {
+				// Try one that isn't circular (4th index is `is_circular`)
+				for candidate in variants.members() {
+					let value = candidate.index("value");
+					if !value.index(4).as_bool()
+							.is_some_and(|b| b) {
+						selected_variant = candidate;
+						found = true;
+						break;
+					}
+				}
+			}
+			if !found {
+				eprintln!(
+					"{YELLOW}warning in test generation: \
+					failed to select a variant of `{}` \
+					that doesn't recurse.{NORMAL}",
+					ty.index("name")
+				)
 			}
 		}
 		let value = selected_variant.index("value");
@@ -558,7 +592,7 @@ impl<'a> RustAlternator<'a> {
 						write!(&mut w, "{}, ", flag_set).unwrap();
 						flag_set = !flag_set;
 					} else {
-						if flag_val_set && self.depth < 10 {
+						if flag_val_set && self.depth >= 5 {
 							write!(&mut w, "Some(").unwrap();
 							self.depth += 1;
 							self.write_ref(&mut w, flag.index("value"), true);
@@ -643,18 +677,49 @@ impl<'a> RustAlternator<'a> {
 				true
 			}
 			"Array" => {
-				if self.depth > 10 {
+				if self.depth >= 5 {
 					write!(&mut w, r#"vec![]"#).unwrap();
 					return true;
 				}
 				write!(&mut w, r#"vec!["#).unwrap();
+				let generic_args = self.generic_args.clone().unwrap();
 				for _ in 0..3 {
 					self.depth += 1;
-					self.write_ref(&mut w, self.generic_args.clone().unwrap().index(0), false);
+					self.write_ref(&mut w, &generic_args.index(0), false);
 					self.depth -= 1;
 					write!(&mut w, ", ").unwrap();
 				}
 				write!(&mut w, r#"]"#).unwrap();
+				true
+			}
+			"Map" => {
+				if self.depth >= 5 {
+					write!(&mut w, r#"vec![]"#).unwrap();
+					return true;
+				}
+				write!(&mut w, r#"vec!["#).unwrap();
+				let generic_args = self.generic_args.clone().unwrap();
+				for _ in 0..3 {
+					write!(&mut w, r#"KeyPair {{ key: "#).unwrap();
+					self.depth += 1;
+					self.write_ref(&mut w, &generic_args.index(0), false);
+					write!(&mut w, ", value: ").unwrap();
+					self.write_ref(&mut w, &generic_args.index(1), false);
+					self.depth -= 1;
+					write!(&mut w, "}}, ").unwrap();
+				}
+				write!(&mut w, r#"]"#).unwrap();
+				true
+			}
+			"Boolean" => {
+				self.hasher.write(b"boolean");
+				let n = self.hasher.finish() as usize;
+				if n % 2 == 0 {
+					write!(&mut w, r#"true"#).unwrap();
+
+				} else {
+					write!(&mut w, r#"false"#).unwrap();					
+				}
 				true
 			}
 			"Done" => {

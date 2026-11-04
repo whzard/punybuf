@@ -4,8 +4,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub use std::borrow::Cow;
 
-use crate::{MAX_ARRAY_LENGTH, MAX_BYTES_LENGTH};
-pub use crate::{UInt, Done, Void, Bytes, PBCommand, PBCommandExt, PBType};
+use crate::{KeyPair, MAX_ARRAY_LENGTH, MAX_BYTES_LENGTH};
+pub use crate::{UInt, Done, Void, Bytes, PBCommand, PBCommandExt, PBType, Map};
 
 /// All Punybuf types implement this trait.
 ///
@@ -50,34 +50,34 @@ impl AsyncPBType for UInt {
 		if uint < 128 {
 			w.write_all(&uint.to_be_bytes()[7..8]).await?;
 
-			} else if uint < 16512 {
-				uint -= 128;
-				let bytes = &mut uint.to_be_bytes()[6..8];
-				bytes[0] |= 0b10_000000;
-				w.write_all(bytes).await?;
+		} else if uint < 16512 {
+			uint -= 128;
+			let bytes = &mut uint.to_be_bytes()[6..8];
+			bytes[0] |= 0b10_000000;
+			w.write_all(bytes).await?;
 
-			} else if uint < 2113664 {
-				uint -= 16512;
-				let bytes = &mut uint.to_be_bytes()[5..8];
-				bytes[0] |= 0b110_00000;
-				w.write_all(bytes).await?;
+		} else if uint < 2113664 {
+			uint -= 16512;
+			let bytes = &mut uint.to_be_bytes()[5..8];
+			bytes[0] |= 0b110_00000;
+			w.write_all(bytes).await?;
 
-			} else if uint < 68721590400 {
-				uint -= 2113664;
-				let bytes = &mut uint.to_be_bytes()[3..8];
-				bytes[0] |= 0b1110_0000;
-				w.write_all(bytes).await?;
+		} else if uint < 68721590400 {
+			uint -= 2113664;
+			let bytes = &mut uint.to_be_bytes()[3..8];
+			bytes[0] |= 0b1110_0000;
+			w.write_all(bytes).await?;
 
-			} else if uint < 1152921573328437376 {
-				uint -= 68721590400;
-				let bytes = &mut uint.to_be_bytes()[0..8];
-				bytes[0] |= 0b1111_0000;
-				w.write_all(bytes).await?;
+		} else if uint < 1152921573328437376 {
+			uint -= 68721590400;
+			let bytes = &mut uint.to_be_bytes()[0..8];
+			bytes[0] |= 0b1111_0000;
+			w.write_all(bytes).await?;
 
-			} else {
-				Err(io::Error::other("number too big (max 1152921573328437375)"))?;
-			}
-			Ok(())
+		} else {
+			Err(io::Error::other("number too big (max 1152921573328437375)"))?;
+		}
+		Ok(())
 	}
 	async fn deserialize_async<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> io::Result<Self> {
 		let mut first_byte = [0; 1];
@@ -315,5 +315,71 @@ pub trait AsyncPBCommand: Sized + Send + Sync + PBCommand {
 			w.write_all(&self.id().to_be_bytes()).await?;
 			self.serialize_self_async(w).await
 		}
+	}
+}
+
+impl<K: AsyncPBType, V: AsyncPBType> AsyncPBType for KeyPair<K, V> {
+	async fn serialize_async<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> io::Result<()> {
+		self.key.serialize_async(w).await?;
+		self.value.serialize_async(w).await?;
+		Ok(())
+	}
+	async fn deserialize_async<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> io::Result<Self> {
+		let field_key = K::deserialize_async(r).await?;
+		let field_value = V::deserialize_async(r).await?;
+		Ok(Self {
+			key: field_key,
+			value: field_value,
+		})
+	}
+}
+
+impl AsyncPBType for bool {
+	async fn serialize_async<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> io::Result<()> {
+		if *self {
+			0u8.serialize_async(w).await?;
+		} else {
+			1u8.serialize_async(w).await?;
+		}
+		Ok(())
+	}
+	async fn deserialize_async<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> io::Result<Self> {
+		let discriminant = u8::deserialize_async(r).await?;
+		Ok(match discriminant {
+			0 => true,
+			1 => false,
+			_ => {
+				Err(io::Error::other("Unknown enum discriminant; enum is not extensible"))?
+			}
+		})
+	}
+}
+
+impl<T: AsyncPBType> AsyncPBType for Option<T> {
+	async fn serialize_async<W: AsyncWriteExt + Unpin + Send>(&self, w: &mut W) -> io::Result<()> {
+		match self {
+			None => {
+				0u8.serialize_async(w).await?;
+			}
+			Some(value) => {
+				1u8.serialize_async(w).await?;
+				value.serialize_async(w).await?;
+			}
+		}
+		Ok(())
+	}
+	async fn deserialize_async<R: AsyncReadExt + Unpin + Send>(r: &mut R) -> io::Result<Self> {
+		let discriminant = u8::deserialize_async(r).await?;
+		Ok(match discriminant {
+			0 => {
+				None
+			}
+			1 => {
+				Some(T::deserialize_async(r).await?)
+			}
+			_ => {
+				Err(io::Error::other("Unknown enum discriminant; enum is not extensible"))?
+			}
+		})
 	}
 }

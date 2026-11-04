@@ -60,10 +60,13 @@ impl<'x> PBType<'x> for Void {
 
 pub struct DuplicateKeysFound;
 pub trait HashMapConvertible<K, V>: Sized {
-	/// Converts the value to a `HashMap`, overriding duplicate keys.  
-	/// Returns the resulting hashmap and a boolean indicating whether any duplicate keys were found
+	/// Convert the value to a `HashMap`, overriding duplicate keys.
+	///
+	/// Returns the resulting `HashMap` and a boolean indicating whether any duplicate keys were found
 	fn to_map_allow_duplicates(self) -> (HashMap<K, V>, bool);
 
+	/// Convert the value to a `HashMap`
+	///
 	/// Returns an error if there were any duplicate keys in the Map
 	fn try_to_map(self) -> Result<HashMap<K, V>, DuplicateKeysFound> {
 		let (map, duplicates_found) = self.to_map_allow_duplicates();
@@ -73,7 +76,10 @@ pub trait HashMapConvertible<K, V>: Sized {
 			Err(DuplicateKeysFound)
 		}
 	}
-	fn from_map(map: std::collections::HashMap<K, V>) -> Self;
+
+	/// Build this type from a `HashMap`
+	// TODO: update this API to use `impl Iterator<Item = (K, V)>`
+	fn from_map(map: HashMap<K, V>) -> Self;
 }
 
 /// An empty type, used as a return type for a command that doesn't need to return
@@ -180,34 +186,34 @@ impl<'x> PBType<'x> for UInt {
 		if uint < 128 {
 			w.write_all(&uint.to_be_bytes()[7..8])?;
 
-			} else if uint < 16512 {
-				uint -= 128;
-				let bytes = &mut uint.to_be_bytes()[6..8];
-				bytes[0] |= 0b10_000000;
-				w.write_all(bytes)?;
+		} else if uint < 16512 {
+			uint -= 128;
+			let bytes = &mut uint.to_be_bytes()[6..8];
+			bytes[0] |= 0b10_000000;
+			w.write_all(bytes)?;
 
-			} else if uint < 2113664 {
-				uint -= 16512;
-				let bytes = &mut uint.to_be_bytes()[5..8];
-				bytes[0] |= 0b110_00000;
-				w.write_all(bytes)?;
+		} else if uint < 2113664 {
+			uint -= 16512;
+			let bytes = &mut uint.to_be_bytes()[5..8];
+			bytes[0] |= 0b110_00000;
+			w.write_all(bytes)?;
 
-			} else if uint < 68721590400 {
-				uint -= 2113664;
-				let bytes = &mut uint.to_be_bytes()[3..8];
-				bytes[0] |= 0b1110_0000;
-				w.write_all(bytes)?;
+		} else if uint < 68721590400 {
+			uint -= 2113664;
+			let bytes = &mut uint.to_be_bytes()[3..8];
+			bytes[0] |= 0b1110_0000;
+			w.write_all(bytes)?;
 
-			} else if uint < 1152921573328437376 {
-				uint -= 68721590400;
-				let bytes = &mut uint.to_be_bytes()[0..8];
-				bytes[0] |= 0b1111_0000;
-				w.write_all(bytes)?;
+		} else if uint < 1152921573328437376 {
+			uint -= 68721590400;
+			let bytes = &mut uint.to_be_bytes()[0..8];
+			bytes[0] |= 0b1111_0000;
+			w.write_all(bytes)?;
 
-			} else {
-				Err(io::Error::other("number too big (max 1152921573328437375)"))?;
-			}
-			Ok(())
+		} else {
+			Err(io::Error::other("number too big (max 1152921573328437375)"))?;
+		}
+		Ok(())
 	}
 	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
 		let mut first_byte = [0; 1];
@@ -549,10 +555,144 @@ pub trait PBCommand {
 	}
 }
 
+impl<'x, K: PBType<'x> + std::hash::Hash + Eq, V: PBType<'x>> HashMapConvertible<K, V> for Map<K, V> {
+	fn to_map_allow_duplicates(self) -> (HashMap<K, V>, bool) {
+		let mut hm = HashMap::new();
+		let mut duplicates = false;
+		for pair in self {
+			if hm.insert(pair.key, pair.value).is_some() {
+				duplicates = true;
+			}
+		}
+		(hm, duplicates)
+	}
+	fn from_map(map: HashMap<K, V>) -> Self {
+		let mut this = Self::new();
+		for (key, value) in map.into_iter() {
+			this.push(KeyPair { key, value });
+		}
+		this
+	}
+}
+/// A map type. This isn't marked `@builtin`, but implementations may, for their
+/// own convenience, allow to convert this type to their own `HashMap`
+/// implementation. This conversion may fail, as this type enforces no rules
+/// on the uniquness of the keys.
+/// 
+/// In the case that one of the keys is not unique, the implementation SHOULD NOT
+/// reject a frame or fail the deserialization completely, but should react to this error
+/// in some other way, like telling the user or throwing a more specific error.
+pub type Map<K, V> = Vec<KeyPair<K, V>>;
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeyPair<K, V> {
+	pub key: K,
+	pub value: V,
+}
+impl<'x, K: PBType<'x>, V: PBType<'x>> PBType<'x> for KeyPair<K, V> {
+	fn attributes() -> &'static [(&'static str, Option<&'static str>)] { &[
+		("@sealed", None),
+	] }
+	fn serialize<W: io::Write>(&self, w: &mut W) -> io::Result<()> {
+		self.key.serialize(w)?;
+		self.value.serialize(w)?;
+		Ok(())
+	}
+	fn deserialize_stream<R: io::Read>(r: &mut R) -> io::Result<Self> {
+		let field_key = K::deserialize_stream(r)?;
+		let field_value = V::deserialize_stream(r)?;
+		Ok(Self {
+			key: field_key,
+			value: field_value,
+		})
+	}
+	fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {
+		let field_key = K::deserialize(r)?;
+		let field_value = V::deserialize(r)?;
+		Ok(Self {
+			key: field_key,
+			value: field_value,
+		})
+	}
+}
+
+impl<'x> PBType<'x> for bool {
+	fn serialize<W: io::Write>(&self, w: &mut W) -> io::Result<()> {
+		if *self {
+			0u8.serialize(w)?;
+		} else {
+			1u8.serialize(w)?;
+		}
+		Ok(())
+	}
+	fn deserialize_stream<R: io::Read>(r: &mut R) -> io::Result<Self> {
+		let discriminant = u8::deserialize_stream(r)?;
+		Ok(match discriminant {
+			0 => true,
+			1 => false,
+			_ => {
+				Err(io::Error::other("Unknown enum discriminant; enum is not extensible"))?
+			}
+		})
+	}
+	fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {
+		let discriminant = u8::deserialize(r)?;
+		Ok(match discriminant {
+			0 => true,
+			1 => false,
+			_ => {
+				Err(io::Error::other("Unknown enum discriminant; enum is not extensible"))?
+			}
+		})
+	}
+}
+impl<'x, T: PBType<'x>> PBType<'x> for Option<T> {
+	fn serialize<W: io::Write>(&self, w: &mut W) -> io::Result<()> {
+		match self {
+			None => {
+				0u8.serialize(w)?;
+			}
+			Some(value) => {
+				1u8.serialize(w)?;
+				value.serialize(w)?;
+			}
+		}
+		Ok(())
+	}
+	fn deserialize_stream<R: io::Read>(r: &mut R) -> io::Result<Self> {
+		let discriminant = u8::deserialize_stream(r)?;
+		Ok(match discriminant {
+			0 => {
+				None
+			}
+			1 => {
+				Some(T::deserialize_stream(r)?)
+			}
+			_ => {
+				Err(io::Error::other("Unknown enum discriminant; enum is not extensible"))?
+			}
+		})
+	}
+	fn deserialize<'a: 'x>(r: &mut &'a [u8]) -> io::Result<Self> {
+		let discriminant = u8::deserialize(r)?;
+		Ok(match discriminant {
+			0 => {
+				None
+			}
+			1 => {
+				Some(T::deserialize(r)?)
+			}
+			_ => {
+				Err(io::Error::other("Unknown enum discriminant; enum is not extensible"))?
+			}
+		})
+	}
+}
+
 // TODO: write more tests
 #[cfg(test)]
 mod libtest {
-	use crate::{PBType, UInt};
+	use crate::{PBType, UInt, KeyPair, tokio::AsyncPBType};
+	use std::borrow::Cow;
 
 	const TEST_UINTS: &[u64] = &[
 		0, 32, 64, 127, 128, 129,
@@ -584,8 +724,6 @@ mod libtest {
 	
 	#[tokio::test]
 	async fn async_uint_correct() {
-		// use crate::tokio::UInt;
-		use crate::tokio::AsyncPBType;
 		for n in TEST_UINTS {
 			let mut v = vec![];
 			UInt(*n).serialize_async(&mut v).await.unwrap();
@@ -605,8 +743,6 @@ mod libtest {
 
 	#[test]
 	fn strings() {
-		use std::borrow::Cow;
-		use crate::{PBType};
 		let mut v = vec![];
 		for s in TEST_STRINGS {
 			Cow::Borrowed(*s).serialize(&mut v).unwrap();
@@ -621,5 +757,96 @@ mod libtest {
 			let res: Cow<'_, str> = Cow::deserialize_stream(&mut slice).unwrap();
 			assert_eq!(res.as_ref(), *s);
 		}
+	}
+
+	#[test]
+	fn streaming_key_pair() {
+		let mut vec = Vec::<u8>::new();
+		let thing = KeyPair { key: Cow::from("Hello, world!"), value: Cow::from("Hello, world!"), };
+		thing.serialize(&mut vec).unwrap();
+		let r = &mut &vec[..];
+		let other = KeyPair::<Cow<'_, str>, Cow<'_, str>>::deserialize_stream(r).unwrap();
+		assert_eq!(thing, other, "values don't match");
+		assert_eq!(*r, &[], "cleanup");
+	}
+	#[test]
+	fn in_place_key_pair() {
+		let mut vec = Vec::<u8>::new();
+		let thing = KeyPair { key: Cow::from("Hello, world!"), value: Cow::from("Hello, world!"), };
+		thing.serialize(&mut vec).unwrap();
+		let r = &mut &vec[..];
+		let other = KeyPair::<Cow<'_, str>, Cow<'_, str>>::deserialize(r).unwrap();
+		assert_eq!(thing, other, "values don't match");
+		assert_eq!(*r, &[], "cleanup");
+	}
+	#[tokio::test]
+	async fn async_key_pair() {
+		let mut vec = Vec::<u8>::new();
+		let thing = KeyPair { key: Cow::from("Hello, world!"), value: Cow::from("Hello, world"), };
+		thing.serialize_async(&mut vec).await.unwrap();
+		let r = &mut &vec[..];
+		let other = KeyPair::<Cow<'_, str>, Cow<'_, str>>::deserialize_async(r).await.unwrap();
+		assert_eq!(thing, other, "values don't match");
+		assert_eq!(*r, &[], "cleanup");
+	}
+	#[test]
+	fn streaming_boolean() {
+		let mut vec = Vec::<u8>::new();
+		let thing = true;
+		thing.serialize(&mut vec).unwrap();
+		let r = &mut &vec[..];
+		let other = bool::deserialize_stream(r).unwrap();
+		assert_eq!(thing, other, "values don't match");
+		assert_eq!(*r, &[], "cleanup");
+	}
+	#[test]
+	fn in_place_boolean() {
+		let mut vec = Vec::<u8>::new();
+		let thing = false;
+		thing.serialize(&mut vec).unwrap();
+		let r = &mut &vec[..];
+		let other = bool::deserialize(r).unwrap();
+		assert_eq!(thing, other, "values don't match");
+		assert_eq!(*r, &[], "cleanup");
+	}
+	#[tokio::test]
+	async fn async_boolean() {
+		let mut vec = Vec::<u8>::new();
+		let thing = true;
+		thing.serialize_async(&mut vec).await.unwrap();
+		let r = &mut &vec[..];
+		let other = bool::deserialize_async(r).await.unwrap();
+		assert_eq!(thing, other, "values don't match");
+		assert_eq!(*r, &[], "cleanup");
+	}
+	#[test]
+	fn streaming_optional() {
+		let mut vec = Vec::<u8>::new();
+		let thing = Option::<Cow<'_, str>>::None;
+		thing.serialize(&mut vec).unwrap();
+		let r = &mut &vec[..];
+		let other = Option::<Cow<'_, str>>::deserialize_stream(r).unwrap();
+		assert_eq!(thing, other, "values don't match");
+		assert_eq!(*r, &[], "cleanup");
+	}
+	#[test]
+	fn in_place_optional() {
+		let mut vec = Vec::<u8>::new();
+		let thing = Option::Some(Cow::from("Hello, world!"));
+		thing.serialize(&mut vec).unwrap();
+		let r = &mut &vec[..];
+		let other = Option::<Cow<'_, str>>::deserialize(r).unwrap();
+		assert_eq!(thing, other, "values don't match");
+		assert_eq!(*r, &[], "cleanup");
+	}
+	#[tokio::test]
+	async fn async_optional() {
+		let mut vec = Vec::<u8>::new();
+		let thing = Option::Some(Cow::from("Hello, world!"));
+		thing.serialize_async(&mut vec).await.unwrap();
+		let r = &mut &vec[..];
+		let other = Option::<Cow<'_, str>>::deserialize_async(r).await.unwrap();
+		assert_eq!(thing, other, "values don't match");
+		assert_eq!(*r, &[], "cleanup");
 	}
 }
