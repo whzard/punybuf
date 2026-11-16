@@ -1,6 +1,7 @@
 /*
 	schema:
 	{
+		version: [major: number, minor: number]
 		includes_common: boolean
 		types: {
 			name: string
@@ -77,7 +78,7 @@
 		}[]
 	}
 
-	Ref = [name: string, layer: number | null, generic_params: Ref[], is_highest_layer: boolean]
+	Ref = [name: string, layer: number | null, generic_params: Ref[], is_highest_layer: boolean, recursive: boolean]
 	Attrs = Record<string, string | null>
 */
 
@@ -225,6 +226,7 @@ impl ConvertJSON for PunybufDefinition {
 	/// as a String
 	fn to_json(&self) -> String {
 		json::stringify(json::object! {
+			version: [1, 0],
 			includes_common: self.includes_common,
 			types: self.types.iter().map(convert_type).collect::<Vec<_>>(),
 			commands: self.commands.iter().map(convert_command).collect::<Vec<_>>(),
@@ -234,6 +236,15 @@ impl ConvertJSON for PunybufDefinition {
 	/// returns Err(String) with a textual representation of the error.
 	fn from_json(input: &str) -> Result<Self, String> {
 		let mut object = json::parse(input).map_err(|e| e.to_string())?;
+		let version_field = object.remove("version");
+		let versions: Vec<&JsonValue> = version_field.members().collect();
+		if let Some(major) = versions.get(0) && major.as_u32() == Some(1) {
+			return Err(format!(
+				"Version mismatch: expected 1.0, but got {}.{}",
+				major.as_u32().unwrap_or(0),
+				versions.get(1).map(|v| v.as_u32()).flatten().unwrap_or(0)
+			));
+		}
 		let includes_common = object.remove("includes_common").as_bool().unwrap_or(false);
 		let mut object_types = object.remove("types");
 		let mut result = PunybufDefinition::new(includes_common);

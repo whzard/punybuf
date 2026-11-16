@@ -5,6 +5,9 @@
 # JSON Schema
 ```ts
 type Schema = {
+	/** Different major versions are backwards incompatible,
+	 *  different minor versions cannot be compared as they may add new fields */
+	version: [major: number, minor: number]
 	/** Whether this file includes `common` */
 	includes_common: boolean
 	types: {
