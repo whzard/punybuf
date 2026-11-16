@@ -3,6 +3,7 @@
 `pbd` takes in a `.pbd` file and either generates code directly or outputs the JSON IR with the following schema to stdout.
 
 # JSON Schema
+This specification describes version 1.0 of the schema (`[1, 0]`)
 ```ts
 type Schema = {
 	/** Different major versions are backwards incompatible,

@@ -62,16 +62,15 @@ Options:
 ```
 
 ## Repository structure
-- `/pbd` - CLI tool  
-- `/docs` - Documentation  
-- `/vscode-sytax-highlighting` - VSCode extension for syntax highlighting  
-- `/rust_punybuf_common` - Rust crate for `common`  
+- `/pbd` - CLI tool
+- `/docs` - Documentation
+- `/tree-sitter-pbd` - Tree sitter support
+- `/rust_punybuf_common` - Rust crate for `common`
+- `/editors` - Supported editor extensions (VSCode support is outdated)
 
 ## TODO
 - Add native support for more languages
 - Implement binary compatibility checks
 - Document capabilities
 - Finish documentation
-- Support `doc`s inside files
-- Rust codegen: use `u64` instead of `UInt`?
-- Rust: finalize the API to be used inside Cargo build scripts.
+- Support `doc`s and attributes for files
