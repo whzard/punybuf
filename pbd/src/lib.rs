@@ -1,3 +1,31 @@
+//! # The Punybuf compiler interface
+//!
+//! This crate is used to compile `.pbd` files into JSON IR and
+//! all other supported codegen targets.
+//! 
+//! In the [`advanced`] module there are other types and traits
+//! useful for either custom targets (through the [`PunybufDefinition`]
+//! API) or for providing custom inputs to the Punybuf compiler (with
+//! the [`PunybufParser::parse`] and the [`advanced::IncludeHandler`] traits)
+//! 
+//! Under normal circumstances, you would want to start with
+//! [`PunybufParser`]:
+//! ```rust
+//! # use punybuf::PunybufParser;
+//! # use punybuf::RustCodegen;
+//! let parsed = PunybufParser::parse_string(
+//!     "include common
+//! 
+//!     SomeStruct = {
+//!         some_field: UInt
+//!     }".into()
+//! ).expect("parsing");
+//! 
+//! let definition = parsed.resolve(false).expect("valid source");
+//! let rust_codegen = RustCodegen::new(&definition).use_tokio(true);
+//! let output = rust_codegen.codegen();
+//! ```
+
 mod lexer;
 mod binary_compat;
 mod converter;
@@ -12,16 +40,33 @@ mod codegen;
 use std::{io, path::{Path}};
 
 pub use crate::{
-	errors::PunybufError, flattener::PunybufDefinition,
-	parser::{Parser}, resolver::LayerResolver,
+	errors::PunybufError,
+	flattener::PunybufDefinition,
 	converter::ConvertJSON,
-	lexer::{IncludeDisallowed, IncludeHandler},
 	codegen::*
 };
 
+/// This module is for custom include handlers and other manipulations of the
+/// Punybuf source files and the IR. This may be useful to do analysis or to
+/// create your own codegens.
+pub mod advanced {
+	pub use crate::{
+		errors::{InfoLevel, Diagnostic, PunybufErrorIter},
+		flattener::{
+			PunybufType, PunybufCommand,
+			PBField, PBEnumVariant, PBFieldFlag,
+			PBTypeRef
+		},
+		lexer::{
+			IncludeDisallowed, IncludeHandler, Span, Loc,
+			LexerOutput, Lexer
+		},
+	};
+}
 
 use crate::{
-	lexer::Lexer, parser::Declaration,
+	lexer::Lexer, parser::{Declaration, Parser},
+	resolver::LayerResolver,
 };
 
 /// The parsed (but not yet validated) Punybuf definition
@@ -30,6 +75,7 @@ pub struct Parsed {
 	includes_common: bool
 }
 
+/// An interface to parsing Punybuf files.
 pub struct PunybufParser;
 impl PunybufParser {
 	/// Parse the file located at `path`, honoring `include`s relative to that path
@@ -50,18 +96,22 @@ impl PunybufParser {
 		Ok(Ok(Parsed { declarations, includes_common }))
 	}
 	/// Parse the contents of the string, without caring about where it
-	/// came from. `include`s in the source code are not allowed.
+	/// came from. `include`s in the source code are not allowed,
+	/// except for `include common`.
 	pub fn parse_string(str: String) -> Result<Parsed, PunybufError> {
-		Self::parse(str, "<source>".into(), &mut IncludeDisallowed)
+		Self::parse(str, "<source>".into(), &mut advanced::IncludeDisallowed)
 	}
-	/// Parse with custom parameters. When the `include` keyword is
-	/// encountered, the [`IncludeHandler::handle_include`] method
+	/// Parse with custom parameters. You most likely want to call either
+	/// [`Self::parse_file`] or [`Self::parse_string`].
+	/// 
+	/// When the `include` keyword is
+	/// encountered, the [`advanced::IncludeHandler::handle_include`] method
 	/// will be called. If you do not wish to handle `include`s, pass
-	/// [`IncludeDisallowed`] as the `include_handler`.
+	/// [`advanced::IncludeDisallowed`] as the `include_handler`.
 	/// The `file_name` parameter is needed only for diagnostics.
 	pub fn parse(
 		contents: String, file_name: String,
-		include_handler: &mut impl IncludeHandler
+		include_handler: &mut impl advanced::IncludeHandler
 	)
 		-> Result<Parsed, PunybufError>
 	{

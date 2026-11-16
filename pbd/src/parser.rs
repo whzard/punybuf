@@ -5,7 +5,7 @@ use crate::errors::{
 	parser_err, pb_err, ErrorInfo, PunybufError,
 };
 
-use crate::lexer::{Span, Token, TokenData};
+use crate::lexer::{LexerOutput, Span, Token, TokenData};
 
 #[derive(Debug)]
 #[allow(unused)]
@@ -152,9 +152,9 @@ pub struct Parser<'parser> {
 }
 
 impl<'parser> Parser<'parser> {
-	pub fn new(tokens: &'parser Vec<Token>) -> Self {
+	pub fn new(tokens: &'parser LexerOutput) -> Self {
 		Self {
-			peekable: tokens.iter().peekable()
+			peekable: tokens.tokens.iter().peekable()
 		}
 	}
 	pub(crate) fn parse(&mut self) -> Result<Vec<Declaration>, PunybufError> {

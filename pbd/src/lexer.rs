@@ -1,10 +1,8 @@
 use std::{
-	fmt::{Debug, Display},
-	iter::Peekable,
-	rc::Rc,
+	cmp, fmt::{Debug, Display}, iter::Peekable, rc::Rc,
 };
 
-use crate::{errors::{ErrorInfo, PunybufError, parser_err}, pb_err};
+use crate::errors::{ErrorInfo, PunybufError, parser_err, pb_err};
 
 const COMMON: &str = include_str!("../baked/common.pbd");
 
@@ -32,7 +30,7 @@ pub(crate) enum TokenData {
 	Attribute(String, Option<String>),
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// Position in a file
 pub struct Loc {
 	/// The 0-indexed row
@@ -48,6 +46,7 @@ impl Debug for Loc {
 }
 
 impl Loc {
+	/// Produces a Loc with both `row` and `col` set to `0`.
 	pub fn zero() -> Self {
 		Self { row: 0, col: 0 }
 	}
@@ -70,6 +69,8 @@ impl Debug for Span {
 
 #[allow(dead_code)]
 impl Span {
+	/// Produces an empty invalid span, which cannot be
+	/// displayed and does not have valid file contents.
 	pub fn impossible() -> Self {
 		Self {
 			loc_start: Loc::zero(),
@@ -78,28 +79,58 @@ impl Span {
 			file_contents: Rc::new("".to_string())
 		}
 	}
-	/// Produces a new span which spans from self until the `rhs`
+	/// Produces a new span which spans from `self` until the `rhs`.
+	/// If `self` is further than `rhs`, produces a clone of `self`.
 	pub fn extend(&self, rhs: &Self) -> Self {
+		let rightmost = cmp::max(&self.loc_end, &rhs.loc_end);
 		Self {
 			loc_start: self.loc_start.clone(),
-			loc_end: rhs.loc_end.clone(),
+			loc_end: rightmost.clone(),
 			file_name: self.file_name.clone(),
 			file_contents: self.file_contents.clone()
 		}
 	}
+	/// Returns the file name. Note that the file name may be empty
+	/// in case this Span is [`Span::impossible`]. That can happen,
+	/// for example, when converting from JSON IR to the Punybuf definition.
 	pub fn file_name(&self) -> &str {
 		&self.file_name
 	}
+	/// Returns the start location of the span.
+	/// Note that it might be the same as the end location.
 	pub fn start(&self) -> &Loc {
 		&self.loc_start
 	}
+	/// Returns the end location of the span.
+	/// Note that it might be the same as the start location.
 	pub fn end(&self) -> &Loc {
 		&self.loc_end
 	}
 }
 
+/// The output of `PunybufLexer`.
+///
+/// This is intentionally opaque as modifying tokens
+/// directly is not stable and currently unsupported.
+pub struct LexerOutput {
+	pub(crate) tokens: Vec<Token>
+}
+
+impl LexerOutput {
+	/// Returns an empty output, as if the lexer did not produce anything.
+	pub fn empty() -> Self {
+		Self { tokens: vec![] }
+	}
+	fn into_tokens(self) -> Vec<Token> {
+		self.tokens
+	}
+	fn from_tokens(tokens: Vec<Token>) -> Self {
+		Self { tokens }
+	}
+}
+
 #[derive(PartialEq, Eq)]
-pub struct Token {
+pub(crate) struct Token {
 	pub(crate) data: TokenData,
 	pub(crate) span: Span
 }
@@ -218,18 +249,28 @@ pub trait IncludeHandler {
 	/// after the `include` keyword. Including `common` is handled automatically
 	/// and this function will not get called in that case.
 	fn handle_include(&mut self, include_path: String, include_span: Span)
-		-> Result<Vec<Token>, PunybufError>;
+		-> Result<LexerOutput, PunybufError>;
 }
 
 /// Set this as the [`IncludeHandler`] to disallow including other files.
 pub struct IncludeDisallowed;
 impl IncludeHandler for IncludeDisallowed {
-	fn handle_include(&mut self, _: String, include_span: Span) -> Result<Vec<Token>, PunybufError> {
+	fn handle_include(&mut self, _: String, include_span: Span) -> Result<LexerOutput, PunybufError> {
 		Err(pb_err!(include_span, "include is not allowed here".to_string(), ErrorInfo::empty()))
 	}
 }
 
-pub(crate) struct Lexer<'a, I> {
+/// The [lexer](https://en.wikipedia.org/wiki/Lexical_analysis)
+/// for Punybuf definition files. Use this to produce a `LexerOutput`,
+/// which would be the output of the include handler.
+/// 
+/// Note that even though parsing is as simple as just feeding all the
+/// tokens to the internal Punybuf parser, this API is intentionally hidden
+/// because it is unstable. For a way to quickly lex and parse a definiton file,
+/// use a [`crate::PunybufParser`].
+//        ^ This will give out a warning when compiling for
+// an executable
+pub struct Lexer<'a, I> {
 	pub(crate) contents: Rc<String>,
 	pub(crate) file_name: Rc<String>,
 	pub(crate) current_loc: Loc,
@@ -238,6 +279,7 @@ pub(crate) struct Lexer<'a, I> {
 }
 
 impl<'a, I: IncludeHandler> Lexer<'a, I> {
+	/// Construct a new Lexer with the specified `include_handler`
 	pub fn new(contents: String, file_name: String, include_handler: &'a mut I) -> Self {
 		let contents = Rc::new(contents);
 		let file_name = Rc::new(file_name);
@@ -259,7 +301,8 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 			file_contents: Rc::new("\n".repeat(self.current_loc.row + 1) + IMPLICIT_LAYER_DEFINITION)
 		}
 	}
-	pub fn lex(&mut self) -> Result<Vec<Token>, PunybufError> {
+	/// Produce the lexer output
+	pub fn lex(&mut self) -> Result<LexerOutput, PunybufError> {
 		self.includes_common = false;
 
 		let mut tokens: Vec<Token> = Vec::new();
@@ -284,7 +327,7 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 			span: self.implicit_layer_definition()
 		});
 
-		return Ok(tokens);
+		return Ok(LexerOutput::from_tokens(tokens));
 	}
 	pub(crate) fn token(&self, data: TokenData) -> Token {
 		Token::new(data, self.current_loc.clone(), self.file_name.clone(), self.contents.clone())
@@ -299,12 +342,12 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 		}
 	}
 	fn include(&mut self, include_path: String, include_span: Span)
-		-> Result<Vec<Token>, PunybufError>
+		-> Result<LexerOutput, PunybufError>
 	{
 		if include_path == "common" {
 			if self.includes_common {
 				// Including common multiple times is okay
-				return Ok(vec![]);
+				return Ok(LexerOutput::empty());
 			}
 			self.includes_common = true;
 			let mut rust_is_funny = IncludeDisallowed;
@@ -577,12 +620,12 @@ impl<'a, I: IncludeHandler> Lexer<'a, I> {
 								};
 
 								self.current_loc = loc_end.clone();
-								let mut included_tokens = self.include(path, Span {
+								let included_tokens = self.include(path, Span {
 									loc_start, loc_end, file_name: self.file_name.clone(),
 									file_contents: self.contents.clone()
 								})?;
 
-								tokens.append(&mut included_tokens);
+								tokens.append(&mut included_tokens.into_tokens());
 							}
 							"layer" => {
 								tokens.push(self.token(TokenData::LayerKeyword));

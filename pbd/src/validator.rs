@@ -5,8 +5,9 @@ use crate::{
 		Diagnostic, ErrorInfo, PunybufError, diagnostic, parser_err, pb_err
 	}, flattener::{
 		PB_CRC, PBCommandArg, PBCommandDef, PBEnumVariant,
-		PBField, PBFieldFlag, PBTypeDef, PBTypeRef, PunybufDefinition
-	}, lexer::Span, maybe_anon,
+		PBField, PBFieldFlag, PBTypeDef, PBTypeRef, PunybufDefinition,
+		maybe_anon
+	}, lexer::Span,
 };
 
 const COMMON_TYPES: [&str; 16] = [

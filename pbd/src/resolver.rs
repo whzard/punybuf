@@ -28,7 +28,7 @@ struct Dependent {
 	kind: DependentKind
 }
 
-pub struct LayerResolver {
+pub(crate) struct LayerResolver {
 	/// name of dependee -> set of dependents
 	dependencies: HashMap<String, HashSet<Dependent>>,
 	/// (name, layer) of dependent -> set of dependees (only types)

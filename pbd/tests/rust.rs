@@ -2,8 +2,15 @@
 // rust code from pbd.
 
 use std::{
-	cmp, env, fmt::Write, fs::{self, canonicalize}, hash::{DefaultHasher, Hasher, SipHasher}, mem, ops::Index, panic::{self, catch_unwind}, path::Path, process::Command, sync::mpsc::sync_channel, thread::{self, Builder}, time::SystemTime
+	env, fmt::Write, fs::{self, canonicalize}, hash::Hasher,
+	mem, ops::Index, panic::{self, catch_unwind}, path::Path,
+	process::Command, sync::mpsc::sync_channel,
+	thread::{self, Builder}, time::SystemTime
 };
+
+#[allow(deprecated)]
+use std::hash::SipHasher;
+
 use json::JsonValue;
 use punybuf::{PunybufParser, RustCodegen, ConvertJSON};
 
@@ -211,7 +218,7 @@ debug = false
 	ensure_tests(name, value);
 	// }
 
-	let code = RustCodegen::new(GEN_ASYNC, true, &def).codegen();
+	let code = RustCodegen::new(&def).generate_docs(true).use_tokio(GEN_ASYNC).codegen();
 	fs::write(format!("tests_codegen/rust/{name}/src/proto.rs"), code)
 		.expect("failed to write proto.rs");
 

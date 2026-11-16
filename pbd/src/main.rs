@@ -74,7 +74,7 @@ fn main() {
 			.map_err(|e| e.to_string())?
 			.map_err(|e| e.to_string())?;
 
-		verboseln!("Tokens: {:?}", tokens);
+		verboseln!("Tokens: {:?}", tokens.tokens);
 
 		let mut p = Parser::new(&tokens);
 		let decls = p.parse().map_err(|e| e.to_string())?;
@@ -102,7 +102,11 @@ fn main() {
 			let mut file_type = "unknown";
 			let generated = if out_file.ends_with(".rs") {
 				file_type = "Rust";
-				RustCodegen::new(args.get_flag("rust:tokio"), docs, &def).loud(true).codegen()
+				RustCodegen::new(&def)
+					.use_tokio(args.get_flag("rust:tokio"))
+					.generate_docs(docs)
+					.loud(true)
+					.codegen()
 
 			} else if out_file.ends_with(".json") {
 				file_type = "JSON";

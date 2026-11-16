@@ -2,12 +2,12 @@ use crc::{Crc, CRC_32_CKSUM};
 use std::collections::HashMap;
 
 use crate::{
-	errors::{PunybufError, parser_err},
+	errors::{PunybufError, parser_err, pb_err},
 	lexer::Span,
 	parser::{
 		CommandArgument, Declaration, DeclarationValue, EnumVariant, Field,
 		FlexibleDeclarationValue, ValueEnumVariant, ValueReference,
-	}, pb_err,
+	},
 };
 
 pub(crate) const PB_CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_CKSUM);
@@ -52,8 +52,22 @@ impl PBTypeRef {
 		// This is only available in the public API post-resolution
 		self.resolved_layer
 	}
-	/// Whether the `.layer()` is the highest layer of the
-	/// definition.
+	/// Whether this reference's layer is the highest value for
+	/// that name in the definition.
+	/// 
+	/// ```pbd
+	/// layer 0:
+	/// Struct = {}
+	/// 
+	/// layer 1:
+	/// Struct = { field: UInt }  # <-- Struct.is_highest_layer() will be true
+	/// 
+	/// layer 2:
+	/// AnotherStruct = {}  # <-- does not affect Struct
+	/// ```
+	/// 
+	/// Any reference to `Struct` inherits these properties, depending on
+	/// from which layer it is referenced.
 	pub fn is_highest_layer(&self) -> bool {
 		// This is only available in the public API post-resolution
 		self.is_highest_layer
@@ -110,6 +124,8 @@ pub struct PBField {
 
 #[allow(dead_code)]
 impl PBField {
+	/// Returns the (name, span) of this field. Be careful, as
+	/// anonymous flag fields' names start with a number.
 	pub fn name(&self) -> (&str, &Span) {
 		(&self.name, &self.name_span)
 	}
@@ -298,7 +314,19 @@ impl<'s> PunybufType<'s> {
 	pub fn layer(&self) -> u32 {
 		*self.0.get_layer()
 	}
-	/// Whether this type is defined at the highest layer
+	/// Whether this type's layer is the highest value for
+	/// that name in the definition.
+	/// 
+	/// ```pbd
+	/// layer 0:
+	/// Struct = {}
+	/// 
+	/// layer 1:
+	/// Struct = { field: UInt }  # <-- Struct.is_highest_layer() will be true
+	/// 
+	/// layer 2:
+	/// AnotherStruct = {}  # <-- does not affect Struct
+	/// ```
 	pub fn is_highest_layer(&self) -> bool {
 		self.0.is_highest_layer()
 	}
@@ -392,6 +420,14 @@ impl<'s> PunybufCommand<'s> {
 	}
 }
 
+/// The parsed and flattened Punybuf definition. This
+/// format corresponds one-to-one with the JSON IR, except
+/// it does not lose source information (as in, it keeps locations
+/// of tokens).
+/// 
+/// This type should be passed to a codegen, or, if using the advanced
+/// module, can be used to get raw information about types and commands
+/// inside.
 #[derive(Debug, Clone)]
 #[allow(unused)]
 pub struct PunybufDefinition {
@@ -419,9 +455,11 @@ impl PunybufDefinition {
 	pub fn includes_common(&self) -> bool {
 		self.includes_common
 	}
+	/// Return a read-only iterator over all types in the definition
 	pub fn types(&self) -> impl Iterator<Item = PunybufType<'_>> {
 		self.types.iter().map(|n| PunybufType(n))
 	}
+	/// Return a read-only iterator over all commands in the definition
 	pub fn commands(&self) -> impl Iterator<Item = PunybufCommand<'_>> {
 		self.commands.iter().map(|n| PunybufCommand(n))
 	}
@@ -704,7 +742,6 @@ pub(crate) fn flatten(decls: Vec<Declaration>, includes_common: bool) -> Result<
 	Ok(def)
 }
 
-#[macro_export]
 macro_rules! maybe_anon {
 	($field:expr, $normal:literal, $anon:literal) => {{
 		let f = &$field;
@@ -723,3 +760,4 @@ macro_rules! maybe_anon {
 		}
 	}}
 }
+pub(crate) use maybe_anon;

@@ -86,18 +86,38 @@ fn is_in_common(name: &str) -> bool {
 }
 
 impl<'def> RustCodegen<'def> {
-	pub fn new(use_tokio: bool, gen_docs: bool, def: &'def PunybufDefinition) -> Self {
+	/// Create new codegen. To generate the output code,
+	/// use [`Self::codegen`]. Options can be set by using
+	/// other methods.
+	pub fn new(def: &'def PunybufDefinition) -> Self {
 		Self {
-			use_tokio,
+			use_tokio: false,
 			uses_common: true,
 			loud: false,
-			gen_docs,
+			gen_docs: false,
 			buffer: String::new(),
 			def,
 			lifetime: "'x"
 		}
 	}
+	/// Whether we should generate async definitions
+	/// using tokio.
+	///
+	/// Default: false
+	pub fn use_tokio(mut self, use_tokio: bool) -> Self {
+		self.use_tokio = use_tokio;
+		self
+	}
+	/// Whether we should generate documentation comments
+	/// in the Rust source code.
+	///
+	/// Default: false
+	pub fn generate_docs(mut self, gen_docs: bool) -> Self {
+		self.gen_docs = gen_docs;
+		self
+	}
 	/// Whether we should emit warnings to the console.
+	///
 	/// Default: false
 	pub fn loud(mut self, loud: bool) -> Self {
 		self.loud = loud;

@@ -5,7 +5,10 @@ use crate::lexer::Span;
 /// A `PunybufError` means that the Punybuf definition is
 /// faulty or invalid. The primary interface to that error
 /// is the `Debug` implementation, although one can also call
-/// `error` and `iter` to get the diagnostics inside that error
+/// `error` and `iter` to get the diagnostics inside that error.
+/// 
+/// You may construct this value from either a `String` or from
+/// a ready `Diagnostic` using [`From`].
 #[derive(Debug)]
 pub struct PunybufError {
 	pub(crate) display_error: bool,
@@ -83,14 +86,46 @@ impl PunybufError {
 	pub fn iter(&self) -> PunybufErrorIter<'_> {
 		PunybufErrorIter { error: self, n: 0 }
 	}
+	/// Add a diagnostic that's supposed to appear after the error,
+	/// and return self
+	pub fn then(mut self, diag: Diagnostic) -> Self {
+		self.after_error.push(diag);
+		self
+	}
+}
+
+impl From<Diagnostic> for PunybufError {
+	fn from(value: Diagnostic) -> Self {
+		Self {
+			error: value,
+			..Self::default()
+		}
+	}
+}
+
+impl From<String> for PunybufError {
+	/// Warning: this sets the `span` to [`Span::impossible`],
+	/// which causes slightly ugly output in the terminal.
+	fn from(value: String) -> Self {
+		Self {
+			error: Diagnostic {
+				content: value, span: Span::impossible(),
+				level: InfoLevel::Error
+			},
+			..Self::default()
+		}
+	}
 }
 
 impl Display for PunybufError {
+	/// Formats this error nicely for terminal output.
+	/// Calls [`Self::explain`].
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}\n{}", self.error.content, self.explain())
 	}
 }
 
+/// Iterator over a Punybuf diagnostic message
 pub struct PunybufErrorIter<'e> {
 	n: usize,
 	error: &'e PunybufError
@@ -170,6 +205,10 @@ pub struct Diagnostic {
 	pub level: InfoLevel,
 }
 impl Diagnostic {
+	#[allow(dead_code)]
+	pub fn new(span: Span, level: InfoLevel, content: String) -> Self {
+		Self { content, span, level }
+	}
 	/// Produce a human-readable string for the terminal, explaining
 	/// the diagnostic and pointing at the correct place in the source
 	/// code.
@@ -265,28 +304,28 @@ pub(crate) struct ErrorInfo {
 }
 #[allow(unused)]
 impl ErrorInfo {
-	pub fn empty() -> Self {
+	pub(crate) fn empty() -> Self {
 		Self {
 			before_error: Vec::new(),
 			after_error: Vec::new(),
 			explain_error: true
 		}
 	}
-	pub fn and_error(before_error: Vec<Diagnostic>) -> Self {
+	pub(crate) fn and_error(before_error: Vec<Diagnostic>) -> Self {
 		Self {
 			before_error,
 			after_error: Vec::new(),
 			explain_error: true
 		}
 	}
-	pub fn error_and(after_error: Vec<Diagnostic>) -> Self {
+	pub(crate) fn error_and(after_error: Vec<Diagnostic>) -> Self {
 		Self {
 			before_error: Vec::new(),
 			after_error,
 			explain_error: true
 		}
 	}
-	pub fn instead(vec: Vec<Diagnostic>) -> Self {
+	pub(crate) fn instead(vec: Vec<Diagnostic>) -> Self {
 		Self {
 			before_error: vec,
 			after_error: Vec::new(),
@@ -295,7 +334,6 @@ impl ErrorInfo {
 	}
 }
 
-#[macro_export]
 macro_rules! diagnostic {
 	($level:ident, $span:expr, $content:expr) => {
 		crate::errors::Diagnostic {
@@ -308,7 +346,6 @@ macro_rules! diagnostic {
 
 pub(crate) use diagnostic;
 
-#[macro_export]
 /// (span: Span, error: String, info: ErrorInfo)
 macro_rules! pb_err {
 	($span:expr, $err:expr, $expl:expr) => {
@@ -354,7 +391,6 @@ macro_rules! pb_err {
 
 pub(crate) use pb_err;
 
-#[macro_export]
 macro_rules! parser_err {
 	($span:expr, $string:literal, $($rpt:expr),+) => {
 		crate::errors::pb_err!(

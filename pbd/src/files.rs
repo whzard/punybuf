@@ -1,9 +1,9 @@
 use std::{env, fs::read_to_string, io, path::Path, rc::Rc};
 
 use crate::{
-	diagnostic, errors::{
-		BOLD, NORMAL, PunybufError, YELLOW
-	}, lexer::{IncludeHandler, Lexer, Loc, Span, Token}, pb_err
+	errors::{
+		BOLD, NORMAL, PunybufError, YELLOW, diagnostic, pb_err
+	}, lexer::{IncludeHandler, Lexer, LexerOutput, Loc, Span},
 };
 
 fn io_err(error: &str) -> io::Error {
@@ -12,7 +12,7 @@ fn io_err(error: &str) -> io::Error {
 /// Returns `(output_tokens, includes_common)`
 // I don't particularly like the lexer being destroyed here, so perhaps Rc<RefCell> wasn't that bad.
 // If it ever causes problems, look at fe8a47f.
-pub fn tokens_from_file<'a>(file: &'a Path) -> Result<Result<(Vec<Token>, bool), PunybufError>, io::Error> {
+pub fn tokens_from_file<'a>(file: &'a Path) -> Result<Result<(LexerOutput, bool), PunybufError>, io::Error> {
 	let mut a = FileIncludeHandler {
 		root_path: file.parent().ok_or(io::Error::other("cannot find parent directory of a file"))?.into(),
 		included: vec![
@@ -36,7 +36,7 @@ struct FileIncludeHandler {
 }
 
 impl IncludeHandler for FileIncludeHandler {
-	fn handle_include(&mut self, include_path: String, include_span: Span) -> Result<Vec<Token>, PunybufError> {
+	fn handle_include(&mut self, include_path: String, include_span: Span) -> Result<LexerOutput, PunybufError> {
 		let real_path = self.root_path.join(Path::new(&include_path));
 
 		// unwrapping is fine since this path is from joining two
@@ -90,7 +90,7 @@ impl IncludeHandler for FileIncludeHandler {
 				eprint!("{}\n", info.explain());
 			}
 
-			return Ok(vec![]);
+			return Ok(LexerOutput::empty());
 		}
 
 		self.included.push((rp_string, include_span.clone()));
