@@ -97,7 +97,8 @@ impl Display for SeenNameType {
 
 pub struct PunybufValidator<'pbd> {
 	pub definition: &'pbd PunybufDefinition,
-	context_generic_params: Vec<(&'pbd str, &'pbd Span)>
+	context_generic_params: Vec<(&'pbd str, &'pbd Span)>,
+	max_layer: u32,
 }
 
 impl<'d> PunybufValidator<'d> {
@@ -187,9 +188,30 @@ impl<'d> PunybufValidator<'d> {
 			}
 		}
 	}
+	/// Finds the type with the name `name` and the highest layer, at most
+	/// `limit_layer`. Note that `limit_layer` may be a layer never appearing in
+	/// the definition, like `u32::MAX`.
 	fn find_type_by_name(&self, name: &str, limit_layer: u32) -> Option<&PBTypeDef> {
-		self.definition.types.iter().rev().find(|typ| typ.get_name().0 == name && *typ.get_layer() <= limit_layer)
+		let mut candidate: Option<&PBTypeDef> = None;
+		for ty in &self.definition.types {
+			if ty.get_name().0 != name { continue }
+			if ty.get_layer() == &limit_layer {
+				return Some(ty)
+			}
+			if limit_layer >= self.max_layer && ty.get_layer() == &self.max_layer {
+				return Some(ty)
+			}
+			if let Some(current) = candidate && ty.get_layer() > current.get_layer() {
+				candidate = Some(ty)
+			}
+			if let None = candidate {
+				candidate = Some(ty)
+			}
+		}
+		candidate
 	}
+	/// Validates a reference that cannot be `Void`. Returns either that
+	/// the reference is a generic parameter or a top-level declaration.
 	fn validate_reference(&self, refr: &PBTypeRef, owner: &Owner) -> 
 		Result<ReferenceDefinition<'_>, PunybufError> 
 	{
@@ -201,6 +223,8 @@ impl<'d> PunybufValidator<'d> {
 		}
 		self.validate_reference_void(refr, owner, None)
 	}
+	/// Validates a reference that may be `Void`. Returns either that
+	/// the reference is a generic parameter or a top-level declaration.
 	fn validate_reference_void(
 		&self, refr: &PBTypeRef,
 		owner: &Owner, override_generic_params: Option<&Vec<(&str, &Span)>>
@@ -314,13 +338,6 @@ impl<'d> PunybufValidator<'d> {
 													"...you may reference `{}` only directly from inside `{valid_owner}`, \
 													not from `{}`",
 													refr.reference, owner.get_name().0
-												)
-											));
-											explanation.push(diagnostic!(Warning,
-												refr.reference_span.clone(),
-												format!(
-													"also, `{}` is a cyclic type, so be careful!",
-													refr.reference
 												)
 											));
 										}
@@ -468,6 +485,7 @@ impl<'d> PunybufValidator<'d> {
 			}
 		}
 	}
+	/// Validates that each generic parameter is declared only one time
 	pub fn validate_generic_params(params: &Vec<String>, span: &Span) -> Result<(), PunybufError> {
 		let mut declared_params: Vec<&str> = vec![];
 		for ga in params {
@@ -1058,7 +1076,6 @@ impl<'d> PunybufValidator<'d> {
 	/// re-declarations, references to inline declarations, and stuff like that
 	/// 
 	/// Known issue: does not catch self-referential types.
-	// TODO: ^^^
 	pub fn validate(&mut self) -> Result<(), PunybufError> {
 		let mut declared_things: Vec<(&str, &u32, &Span, ThingKind)> = vec![];
 		for tp in &self.definition.types {
@@ -1261,7 +1278,22 @@ impl<'d> PunybufValidator<'d> {
 
 impl PunybufDefinition {
 	pub(crate) fn as_validator(&self) -> PunybufValidator<'_> {
-		PunybufValidator { definition: self, context_generic_params: vec![] }
+		let mut max_layer = 0;
+		for ty in &self.types {
+			if ty.get_layer() > &max_layer {
+				max_layer = *ty.get_layer()
+			}
+		}
+		for cmd in &self.commands {
+			if cmd.layer > max_layer {
+				max_layer = cmd.layer;
+			}
+		}
+		PunybufValidator {
+			definition: self,
+			context_generic_params: vec![],
+			max_layer
+		}
 	}
 	pub(crate) fn validate(&self) -> Result<(), PunybufError> {
 		self.as_validator().validate()

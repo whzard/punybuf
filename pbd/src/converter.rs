@@ -223,7 +223,7 @@ pub trait ConvertJSON {
 
 impl ConvertJSON for PunybufDefinition {
 	/// Converts the definition to the JSON IR and returns the result
-	/// as a String
+	/// as a String. This function returns the JSON format version `1.0`.
 	fn to_json(&self) -> String {
 		json::stringify(json::object! {
 			version: [1, 0],
@@ -232,17 +232,21 @@ impl ConvertJSON for PunybufDefinition {
 			commands: self.commands.iter().map(convert_command).collect::<Vec<_>>(),
 		})
 	}
-	/// Parses JSON and returns a PunybufDefinition. On invalid JSON
-	/// returns Err(String) with a textual representation of the error.
+	/// Parses JSON and returns a PunybufDefinition.
+	/// The resulting definition does not include any source information since
+	/// it is lost in the JSON format. This function expects the IR of version
+	/// `1.0`.
+	/// 
+	/// On invalid JSON returns `Err(String)` with a textual representation of the error.
 	fn from_json(input: &str) -> Result<Self, String> {
 		let mut object = json::parse(input).map_err(|e| e.to_string())?;
 		let version_field = object.remove("version");
 		let versions: Vec<&JsonValue> = version_field.members().collect();
-		if let Some(major) = versions.get(0) && major.as_u32() == Some(1) {
+		if let Some(major) = versions.get(0) && major.as_i32() == Some(1) {
 			return Err(format!(
 				"Version mismatch: expected 1.0, but got {}.{}",
-				major.as_u32().unwrap_or(0),
-				versions.get(1).map(|v| v.as_u32()).flatten().unwrap_or(0)
+				major.as_i32().unwrap_or(0),
+				versions.get(1).map(|v| v.as_i32()).flatten().unwrap_or(0)
 			));
 		}
 		let includes_common = object.remove("includes_common").as_bool().unwrap_or(false);
@@ -310,8 +314,8 @@ fn type_from_json(obj_typ: &mut JsonValue) -> Result<PBTypeDef, String> {
 				is_highest_layer: obj_typ.remove("is_highest_owner").as_bool().unwrap_or(false)
 			})
 		}
-		_ => {
-			Err("invalid `is` value".into())
+		is => {
+			Err(format!("invalid `is` value: {is:?}, expected `struct`, `enum` or `alias`"))
 		}
 	}
 }

@@ -7,7 +7,7 @@
 // and you will forever be trapped in the Resolver's domain.
 
 use std::{
-	collections::{BTreeSet, HashMap, HashSet, VecDeque}, u32, vec,
+	collections::{HashMap, HashSet, VecDeque}, u32, vec,
 };
 
 use crate::flattener::{

@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use crate::{errors::{BOLD, NORMAL, YELLOW}, flattener::{
+use crate::flattener::{
 	PBCommandArg, PBCommandDef, PBEnumVariant, PBField,
 	PBTypeDef, PBTypeRef, PunybufDefinition,
-}};
+};
 
 const TO_MAP: &str = r#"
     fn to_map_allow_duplicates(self) -> (std::collections::HashMap<K, V>, bool) {
