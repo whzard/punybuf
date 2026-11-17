@@ -55,7 +55,7 @@ pub mod advanced {
 		flattener::{
 			PunybufType, PunybufCommand,
 			PBField, PBEnumVariant, PBFieldFlag,
-			PBTypeRef
+			PBTypeRef, PBCommandArg
 		},
 		lexer::{
 			IncludeDisallowed, IncludeHandler, Span, Loc,

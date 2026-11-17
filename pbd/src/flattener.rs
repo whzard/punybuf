@@ -355,9 +355,8 @@ impl<'s> PunybufType<'s> {
 	}
 }
 
-#[derive(Debug, Clone)]
-#[allow(unused)]
 /// The argument to a Punybuf command.
+#[derive(Debug, Clone)]
 pub enum PBCommandArg {
 	/// No argument, like `cmd: () -> ...`
 	None,
