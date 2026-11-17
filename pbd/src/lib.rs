@@ -72,7 +72,8 @@ use crate::{
 /// The parsed (but not yet validated) Punybuf definition
 pub struct Parsed {
 	declarations: Vec<Declaration>,
-	includes_common: bool
+	includes_common: bool,
+	resolve_aliases: bool,
 }
 
 /// An interface to parsing Punybuf files.
@@ -93,7 +94,7 @@ impl PunybufParser {
 			Err(e) => return Ok(Err(e))
 		};
 
-		Ok(Ok(Parsed { declarations, includes_common }))
+		Ok(Ok(Parsed { declarations, includes_common, resolve_aliases: true }))
 	}
 	/// Parse the contents of the string, without caring about where it
 	/// came from. `include`s in the source code are not allowed,
@@ -118,7 +119,7 @@ impl PunybufParser {
 		let mut lexer = Lexer::new(contents, file_name, include_handler);
 		let tokens = lexer.lex()?;
 		let declarations = Parser::new(&tokens).parse()?;
-		Ok(Parsed { declarations, includes_common: lexer.includes_common })
+		Ok(Parsed { declarations, includes_common: lexer.includes_common, resolve_aliases: true })
 	}
 }
 
@@ -127,11 +128,18 @@ impl Parsed {
 	pub fn includes_common(&self) -> bool {
 		self.includes_common
 	}
+	/// Whether the aliases marked with `@resolve` should be resolved
+	/// 
+	/// Default: true
+	pub fn resolve_aliases(mut self, resolve_aliases: bool) -> Self {
+		self.resolve_aliases = resolve_aliases;
+		self
+	}
 	/// Resolve and validate the definition
-	pub fn resolve(self, should_resolve_aliases: bool) -> Result<PunybufDefinition, PunybufError> {
+	pub fn resolve(self) -> Result<PunybufDefinition, PunybufError> {
 		let mut definition = flattener::flatten(self.declarations, self.includes_common)?;
 		definition.validate()?;
-		LayerResolver::new(should_resolve_aliases).resolve(&mut definition);
+		LayerResolver::new(self.resolve_aliases).resolve(&mut definition);
 		Ok(definition)
 	}
 }

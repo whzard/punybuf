@@ -15,6 +15,16 @@ const MAX_ARRAY_LENGTH: usize = const_expect!(
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
+/// The version is automatically checked in the generated code by importing
+/// these symbols from the `punybuf_common` crate and checking their existence.
+// TODO: lmao this is so scuffed
+pub mod supported_versions {
+	/// The major version of this crate
+	pub const MAJOR_1: usize = 1;
+	/// A supported minor version of this crate
+	pub const MINOR_0: usize = 0;
+}
+
 macro_rules! buffer_too_small {
 	() => {
 		io::Error::new(io::ErrorKind::UnexpectedEof, "buffer too small")

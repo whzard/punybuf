@@ -591,13 +591,14 @@ impl<'def> RustCodegen<'def> {
 	fn gen_derive(&mut self) {
 		appendf!(self, "#[derive(Debug, Clone, PartialEq)]\n");
 	}
+	// TODO: this function is huge and unwieldy, split it up, possibly
 	fn gen_command_enums(&mut self) {
 		appendf!(self, "/// This enum contains all possible commands in the RPC definition.\n");
 		self.gen_derive();
-		let need_generics = self.def.commands.iter().any(|cmd| {
+		let needs_lifetime = self.def.commands.iter().any(|cmd| {
 			self.command_needs_lifetime(cmd)
 		});
-		appendf!(self, "pub enum Command{} {{\n", self.gen_lifetime_generics_if(need_generics));
+		appendf!(self, "pub enum Command{} {{\n", self.gen_lifetime_generics_if(needs_lifetime));
 		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
@@ -607,8 +608,8 @@ impl<'def> RustCodegen<'def> {
 		appendf!(self, "}}\n"); // enum Command
 
 		appendf!(self, "impl{} PBCommand for Command{} {{\n",
-			self.gen_lifetime_generics_if(need_generics),
-			self.gen_lifetime_generics_if(need_generics)
+			self.gen_lifetime_generics_if(needs_lifetime),
+			self.gen_lifetime_generics_if(needs_lifetime)
 		);
 		appendf!(self, "    fn id(&self) -> u32 {{\n");
 		appendf!(self, "        match self {{\n");
@@ -668,8 +669,8 @@ impl<'def> RustCodegen<'def> {
 
 		if self.use_tokio {
 			appendf!(self, "impl{} AsyncPBCommand for Command{} {{\n",
-				self.gen_lifetime_generics_if(need_generics),
-				self.gen_lifetime_generics_if(need_generics)
+				self.gen_lifetime_generics_if(needs_lifetime),
+				self.gen_lifetime_generics_if(needs_lifetime)
 			);
 			appendf!(self, "    async fn serialize_self_async<R: {}>(&self, r: &mut R) -> Result<(), io::Error> {{\n", self.write_async());
 			appendf!(self, "        match self {{\n");
@@ -685,8 +686,8 @@ impl<'def> RustCodegen<'def> {
 		}
 
 		appendf!(self, "impl{} Command{} {{\n\n",
-			self.gen_lifetime_generics_if(need_generics),
-			self.gen_lifetime_generics_if(need_generics)
+			self.gen_lifetime_generics_if(needs_lifetime),
+			self.gen_lifetime_generics_if(needs_lifetime)
 		);
 		appendf!(self, "    /// Reads both the ID of the command and its value\n");
 		appendf!(self, "    pub {} deserialize_stream<R: {}>(r: &mut R) -> io::Result<Self> {{\n", self.get_fn(), self.read());
@@ -750,9 +751,53 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, "    }}\n"); // fn deserialize_async
 		}
 		
-		appendf!(self, "}}\n\n"); // impl Command
+		appendf!(self, "}}\n"); // impl Command
 
+		// From traits:
+		for cmd in &self.def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self,
+				"impl{} TryFrom<Command{}> for {} {{\n",
+				self.gen_lifetime_generics_if(needs_lifetime),
+				self.gen_lifetime_generics_if(needs_lifetime),
+				self.gen_command_name(cmd)
+			);
+			appendf!(self,
+				"    /// The command contained in the enum is not the correct one.\n"
+			);
+			appendf!(self, "    type Error = ();\n\n");
+			appendf!(self,
+				"    fn try_from(value: Command{}) -> Result<Self, Self::Error> {{\n",
+				self.gen_lifetime_generics_if(needs_lifetime)
+			);
+			appendf!(self, "        match value {{\n");
+			appendf!(self,
+				"            Command::{}(cmd) => Ok(cmd),\n",
+				self.get_command_name(cmd)
+			);
+			appendf!(self, "            _ => Err(())\n");
+			appendf!(self, "        }}\n"); // match
+			appendf!(self, "    }}\n"); // fn try_from
+			appendf!(self, "}}\n"); // TryFrom<Command>
 
+			appendf!(self,
+				"impl{} From<{}> for Command{} {{\n",
+				self.gen_lifetime_generics_if(needs_lifetime),
+				self.gen_command_name(cmd),
+				self.gen_lifetime_generics_if(needs_lifetime)
+			);
+			appendf!(self,
+				"    fn from(value: {}) -> Self {{\n",
+				self.gen_command_name(cmd)
+			);
+			appendf!(self, "        Self::{}(value)\n", self.get_command_name(cmd));
+			appendf!(self, "    }}\n"); // fn from
+			appendf!(self, "}}\n"); // From<{}>
+		}
+
+		appendf!(self, "\n");
 		let ret_needs_lifetime = self.def.commands.iter().any(|cmd| {
 			self.needs_lifetime_ref(&cmd.ret)
 		});
@@ -858,8 +903,53 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, "    }}\n"); // fn deserialize_return_async
 		}
 
-		appendf!(self, "}}\n\n"); // impl CommandReturn
+		appendf!(self, "}}\n"); // impl CommandReturn
 
+		// From traits:
+		for cmd in &self.def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self,
+				"impl{} TryFrom<CommandReturn{}> for {} {{\n",
+				self.gen_lifetime_generics_if(ret_needs_lifetime),
+				self.gen_lifetime_generics_if(ret_needs_lifetime),
+				self.gen_reference(&cmd.ret, false)
+			);
+			appendf!(self,
+				"    /// The return value contained in the enum is not from the correct command.\n"
+			);
+			appendf!(self, "    type Error = ();\n\n");
+			appendf!(self,
+				"    fn try_from(value: CommandReturn{}) -> Result<Self, Self::Error> {{\n",
+				self.gen_lifetime_generics_if(ret_needs_lifetime)
+			);
+			appendf!(self, "        match value {{\n");
+			appendf!(self,
+				"            CommandReturn::{}(ret) => Ok(ret),\n",
+				self.get_command_name(cmd)
+			);
+			appendf!(self, "            _ => Err(())\n");
+			appendf!(self, "        }}\n"); // match
+			appendf!(self, "    }}\n"); // fn try_from
+			appendf!(self, "}}\n"); // TryFrom<CommandReturn>
+
+			appendf!(self,
+				"impl{} From<{}> for CommandReturn{} {{\n",
+				self.gen_lifetime_generics_if(ret_needs_lifetime),
+				self.gen_reference(&cmd.ret, false),
+				self.gen_lifetime_generics_if(ret_needs_lifetime)
+			);
+			appendf!(self,
+				"    fn from(value: {}) -> Self {{\n",
+				self.gen_reference(&cmd.ret, false)
+			);
+			appendf!(self, "        Self::{}(value)\n", self.get_command_name(cmd));
+			appendf!(self, "    }}\n"); // fn from
+			appendf!(self, "}}\n"); // From<{}>
+		}
+
+		appendf!(self, "\n");
 		appendf!(self, "/// This enum contains all possible command error types in the RPC definition.\n");
 		self.gen_derive();
 		appendf!(self, "pub enum CommandError{} {{\n", self.gen_lifetime_generics_if(true));
@@ -957,7 +1047,52 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, "    }}\n"); // fn deserialize_error_stream
 		}
 
-		appendf!(self, "}}\n\n"); // impl CommandError
+		appendf!(self, "}}\n"); // impl CommandError
+
+		// From traits:
+		for cmd in &self.def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self,
+				"impl{} TryFrom<CommandError{}> for {} {{\n",
+				self.gen_lifetime_generics_if(true),
+				self.gen_lifetime_generics_if(true),
+				self.gen_command_err(cmd)
+			);
+			appendf!(self,
+				"    /// The error value contained in the enum is not from the correct command.\n"
+			);
+			appendf!(self, "    type Error = ();\n\n");
+			appendf!(self,
+				"    fn try_from(value: CommandError{}) -> Result<Self, Self::Error> {{\n",
+				self.gen_lifetime_generics_if(ret_needs_lifetime)
+			);
+			appendf!(self, "        match value {{\n");
+			appendf!(self,
+				"            CommandError::{}(ret) => Ok(ret),\n",
+				self.get_command_name(cmd)
+			);
+			appendf!(self, "            _ => Err(())\n");
+			appendf!(self, "        }}\n"); // match
+			appendf!(self, "    }}\n"); // fn try_from
+			appendf!(self, "}}\n"); // TryFrom<CommandError>
+
+			appendf!(self,
+				"impl{} From<{}> for CommandError{} {{\n",
+				self.gen_lifetime_generics_if(ret_needs_lifetime),
+				self.gen_command_err(cmd),
+				self.gen_lifetime_generics_if(ret_needs_lifetime)
+			);
+			appendf!(self,
+				"    fn from(value: {}) -> Self {{\n",
+				self.gen_command_err(cmd)
+			);
+			appendf!(self, "        Self::{}(value)\n", self.get_command_name(cmd));
+			appendf!(self, "    }}\n"); // fn from
+			appendf!(self, "}}\n"); // From<{}>
+		}
+		appendf!(self, "\n");
 	}
 	fn gen_fields(&mut self, fields: &Vec<PBField>) {
 		for field in fields {
@@ -1689,7 +1824,14 @@ impl<'def> RustCodegen<'def> {
 			if self.use_tokio {
 				appendf!(self, "// if you get an error: punybuf_common's \"tokio\" feature must be enabled.\n");
 			}
-			appendf!(self, "use punybuf_common{}::*;\n", if	self.use_tokio { "::tokio" } else { "" })
+			appendf!(self, "use punybuf_common{}::*;\n", if	self.use_tokio { "::tokio" } else { "" });
+			appendf!(self, "// Version checks. If you get an error here, there\n");
+			appendf!(self, "// is a version mismatch between the `punybuf_common`\n");
+			appendf!(self, "// crate and the generated code.\n");
+			appendf!(self, "#[allow(unused)]\n");
+			appendf!(self, "use punybuf_common::supported_versions::MAJOR_1;\n");
+			appendf!(self, "#[allow(unused)]\n");
+			appendf!(self, "use punybuf_common::supported_versions::MINOR_0;\n");
 		}
 
 		appendf!(self, "\n");

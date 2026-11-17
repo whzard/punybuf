@@ -166,7 +166,7 @@ fn run_test(file: impl AsRef<Path>, expected: Option<String>) -> Result<Option<S
 			));
 		}
 	};
-	let definiton = match parsed.resolve(true) {
+	let definiton = match parsed.resolve() {
 		Ok(x) => x,
 		Err(err) => {
 			if let Some(expected) = expected {
