@@ -6,7 +6,7 @@ use crate::lexer::Span;
 /// faulty or invalid. The primary interface to that error
 /// is the `Debug` implementation, although one can also call
 /// `error` and `iter` to get the diagnostics inside that error.
-/// 
+///
 /// You may construct this value from either a `String` or from
 /// a ready `Diagnostic` using [`From`].
 #[derive(Debug)]

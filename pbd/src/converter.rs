@@ -236,7 +236,7 @@ impl ConvertJSON for PunybufDefinition {
 	/// The resulting definition does not include any source information since
 	/// it is lost in the JSON format. This function expects the IR of version
 	/// `1.0`.
-	/// 
+	///
 	/// On invalid JSON returns `Err(String)` with a textual representation of the error.
 	fn from_json(input: &str) -> Result<Self, String> {
 		let mut object = json::parse(input).map_err(|e| e.to_string())?;

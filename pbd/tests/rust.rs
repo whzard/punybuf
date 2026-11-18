@@ -361,8 +361,9 @@ fn ensure_tests(name: &str, definition: JsonValue) {
 	writeln!(main).unwrap();
 	writeln!(main, "#[cfg(test)]").unwrap();
 	writeln!(main, "mod test {{").unwrap();
+	writeln!(main, "    use std::borrow::Cow;").unwrap();
 	writeln!(main, "    use crate::proto::*;").unwrap();
-	writeln!(main, "    use punybuf_common::*;").unwrap();
+	writeln!(main, "    use punybuf_common::prelude::*;").unwrap();
 	writeln!(main, "    use ::tokio as tokio;").unwrap();
 	writeln!(main).unwrap();
 	let mut alternator = RustAlternator::new(&definition);
@@ -380,6 +381,8 @@ fn ensure_tests(name: &str, definition: JsonValue) {
 		// basically randomly picking one
 
 		// Streaming:
+		// (this is a bit of a misnomer, since we've renamed
+		// the streaming functions to "owned")
 		writeln!(main, "    #[test]").unwrap();
 		writeln!(main, "    fn streaming_{}() {{", get_rust_name(ty)).unwrap();
 		writeln!(main, "        let mut vec = Vec::<u8>::new();").unwrap();
@@ -390,7 +393,7 @@ fn ensure_tests(name: &str, definition: JsonValue) {
 		writeln!(main, "        let r = &mut &vec[..];").unwrap();
 		writeln!(
 			main,
-			"        let other = {}::deserialize_stream(r).unwrap();",
+			"        let other = {}::deserialize_owned(r).unwrap();",
 			get_rust_name_and_generics(ty)
 		).unwrap();
 		writeln!(main, r#"        assert_eq!(thing, other, "values don't match");"#).unwrap();
@@ -418,7 +421,7 @@ fn ensure_tests(name: &str, definition: JsonValue) {
 		if GEN_ASYNC {
 			writeln!(main, "    #[tokio::test]").unwrap();
 			writeln!(main, "    async fn async_{}() {{", get_rust_name(ty)).unwrap();
-			writeln!(main, "        use punybuf_common::tokio::*;").unwrap();
+			writeln!(main, "        use punybuf_common::tokio::prelude::*;").unwrap();
 			writeln!(main, "        let mut vec = Vec::<u8>::new();").unwrap();
 			write!(main, "        let thing = ").unwrap();
 			alternator.write_type_from_decl(&mut main, ty);

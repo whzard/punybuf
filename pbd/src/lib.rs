@@ -21,7 +21,7 @@
 //!     }".into()
 //! ).expect("parsing");
 //! 
-//! let definition = parsed.resolve(false).expect("valid source");
+//! let definition = parsed.resolve().expect("valid source");
 //! let rust_codegen = RustCodegen::new(&definition).use_tokio(true);
 //! let output = rust_codegen.codegen();
 //! ```

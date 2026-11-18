@@ -1,8 +1,16 @@
-use std::{collections::HashMap, fmt::{Debug, Display}, io::{self, Error, Read, Write}, ops::*};
+#![doc = include_str!("../README.md")]
 
-pub use std::borrow::Cow;
+use std::{
+	collections::HashMap,
+	fmt::{Debug, Display},
+	io::{self, Error, Read, Write},
+	ops::*
+};
+
+use std::borrow::Cow;
 
 mod const_macro;
+use const_macro::const_expect;
 const MAX_BYTES_LENGTH: usize = const_expect!(
 	usize::from_str_radix(env!("PUNYBUF_MAX_BYTES_LENGTH"), 10),
 	"invalid value of env variable PUNYBUF_MAX_BYTES_LENGTH"
@@ -15,12 +23,32 @@ const MAX_ARRAY_LENGTH: usize = const_expect!(
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
+pub mod commands;
+
+/// Contains all items that the generated definitions must import.
+///
+/// # Stability
+/// It's not advisable to import this in user code, since items may
+/// be added without incrementing the major version, potentially causing
+/// conflicts.
+pub mod prelude {
+	pub use crate::{
+		PBType, PBSerialize, PBDeserialize, HashMapConvertible,
+		UInt, Bytes, DuplicateKeysFound,
+		Done, Map, KeyPair, Void,
+		commands::{
+			PBCommand, PBCommandDeserialize, PBCommandSerialize,
+			PBProtocol, ProtocolCommands, ProtocolErrors, ProtocolReturns
+		}
+	};
+}
+
 /// The version is automatically checked in the generated code by importing
 /// these symbols from the `punybuf_common` crate and checking their existence.
 // TODO: lmao this is so scuffed
 pub mod supported_versions {
-	/// The major version of this crate
-	pub const MAJOR_1: usize = 1;
+	/// The major version of this crate (`PRE` means we're not yet 1.0)
+	pub const PRE_MAJOR_13: usize = 13;
 	/// A supported minor version of this crate
 	pub const MINOR_0: usize = 0;
 }
@@ -35,35 +63,60 @@ macro_rules! eof {
 		io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected EOF")
 	}
 }
-/// All Punybuf types implement this trait.
-pub trait PBType<'x> {
-	fn attributes() -> &'static [(&'static str, Option<&'static str>)] { &[] }
+/// Interface trait to enable serialization of Punybuf types.
+pub trait PBSerialize {
+	fn attributes(&self) -> &'static [(&'static str, Option<&'static str>)] { &[] }
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()>;
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> where Self: Sized;
-	fn deserialize<'a: 'x>(slice: &mut &'a [u8]) -> io::Result<Self> where Self: Sized {
-		Self::deserialize_stream(slice)
+}
+/// Static trait to enable deserialization of Punybuf types.
+pub trait PBDeserialize<'x> {
+	const ATTRIBUTES: &'static [(&'static str, Option<&'static str>)] = &[];
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self>
+		where Self: Sized;
+	fn deserialize<'a: 'x>(slice: &mut &'a [u8]) -> io::Result<Self>
+		where Self: Sized
+	{
+		Self::deserialize_owned(slice)
 	}
 }
 
-impl<'x, T> PBType<'x> for Box<T> where T: PBType<'x> {
+/// Common trait that all types implement.
+///
+/// This trait has a blanket implementation for all types implementing
+/// [`PBSerialize`] and [`PBDeserialize`]
+pub trait PBType<'x>: PBSerialize + PBDeserialize<'x> {}
+
+impl<'x, T> PBType<'x> for T where T: PBSerialize + PBDeserialize<'x> {}
+
+impl<'x, T> PBSerialize for Box<T> where T: PBSerialize {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		self.deref().serialize(w)
 	}
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> where Self: Sized {
-		T::deserialize_stream(r).map(|x| Box::new(x))
+}
+impl<'x, T> PBDeserialize<'x> for Box<T> where T: PBDeserialize<'x> {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self>
+		where Self: Sized
+	{
+		T::deserialize_owned(r).map(|x| Box::new(x))
 	}
-	fn deserialize<'a: 'x>(slice: &mut &'a [u8]) -> io::Result<Self> where Self: Sized {
+	fn deserialize<'a: 'x>(slice: &mut &'a [u8]) -> io::Result<Self>
+		where Self: Sized
+	{
 		T::deserialize(slice).map(|x| Box::new(x))
 	}
 }
 
 pub type Void = ();
 
-impl<'x> PBType<'x> for Void {
+impl<'x> PBSerialize for Void {
 	fn serialize<W: Write>(&self, _: &mut W) -> io::Result<()> {
 		Ok(())
 	}
-	fn deserialize_stream<R: Read>(_: &mut R) -> io::Result<Self> where Self: Sized {
+}
+impl<'x> PBDeserialize<'x> for Void {
+	fn deserialize_owned<R: Read>(_: &mut R) -> io::Result<Self>
+		where Self: Sized
+	{
 		Ok(())
 	}
 }
@@ -98,12 +151,14 @@ pub trait HashMapConvertible<K, V>: Sized {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Done {}
 
-impl<'x> PBType<'x> for Done {
-	fn deserialize_stream<R: Read>(_r: &mut R) -> io::Result<Self> {
-		Ok(Done {})
-	}
+impl<'x> PBSerialize for Done {
 	fn serialize<W: Write>(&self, _w: &mut W) -> io::Result<()> {
 		Ok(())
+	}
+}
+impl<'x> PBDeserialize<'x> for Done {
+	fn deserialize_owned<R: Read>(_r: &mut R) -> io::Result<Self> {
+		Ok(Done {})
 	}
 }
 
@@ -190,7 +245,7 @@ impl PartialOrd<u64> for UInt {
 }
 
 
-impl<'x> PBType<'x> for UInt {
+impl<'x> PBSerialize for UInt {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		let mut uint = self.0;
 		if uint < 128 {
@@ -225,7 +280,9 @@ impl<'x> PBType<'x> for UInt {
 		}
 		Ok(())
 	}
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
+}
+impl<'x> PBDeserialize<'x> for UInt {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
 		let mut first_byte = [0; 1];
 		r.read_exact(&mut first_byte)?;
 		
@@ -265,92 +322,108 @@ impl<'x> PBType<'x> for UInt {
 	}
 	// there's no specialization for
 	// deserialize() for numbers, since
-	// the deserialize_stream version
+	// the deserialize_owned version
 	// is very fast anyways
 }
 
-impl<'x> PBType<'x> for u8 {
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
-		let mut buf = [0; 1];
-		r.read_exact(&mut buf)?;
-		Ok(buf[0])
-	}
+impl<'x> PBSerialize for u8 {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		w.write_all(&[*self])
 	}
 }
-impl<'x> PBType<'x> for u16 {
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
+impl<'x> PBDeserialize<'x> for u8 {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
+		let mut buf = [0; 1];
+		r.read_exact(&mut buf)?;
+		Ok(buf[0])
+	}
+}
+impl<'x> PBSerialize for u16 {
+	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
+		w.write_all(&self.to_be_bytes())
+	}
+}
+impl<'x> PBDeserialize<'x> for u16 {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
 		let mut buf = [0; 2];
 		r.read_exact(&mut buf)?;
 		Ok(Self::from_be_bytes(buf))
 	}
+}
+impl<'x> PBSerialize for u32 {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		w.write_all(&self.to_be_bytes())
 	}
 }
-impl<'x> PBType<'x> for u32 {
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
+impl<'x> PBDeserialize<'x> for u32 {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
 		let mut buf = [0; 4];
 		r.read_exact(&mut buf)?;
 		Ok(Self::from_be_bytes(buf))
 	}
+}
+impl<'x> PBSerialize for u64 {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		w.write_all(&self.to_be_bytes())
 	}
 }
-impl<'x> PBType<'x> for u64 {
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
+impl<'x> PBDeserialize<'x> for u64 {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
 		let mut buf = [0; 8];
 		r.read_exact(&mut buf)?;
 		Ok(Self::from_be_bytes(buf))
 	}
+}
+impl<'x> PBSerialize for i32 {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		w.write_all(&self.to_be_bytes())
 	}
 }
-impl<'x> PBType<'x> for i32 {
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
+impl<'x> PBDeserialize<'x> for i32 {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
 		let mut buf = [0; 4];
 		r.read_exact(&mut buf)?;
 		Ok(Self::from_be_bytes(buf))
 	}
+}
+impl<'x> PBSerialize for i64 {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		w.write_all(&self.to_be_bytes())
 	}
 }
-impl<'x> PBType<'x> for i64 {
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
+impl<'x> PBDeserialize<'x> for i64 {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
 		let mut buf = [0; 8];
 		r.read_exact(&mut buf)?;
 		Ok(Self::from_be_bytes(buf))
 	}
+}
+impl<'x> PBSerialize for f32 {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		w.write_all(&self.to_be_bytes())
 	}
 }
-impl<'x> PBType<'x> for f32 {
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
+impl<'x> PBDeserialize<'x> for f32 {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
 		let mut buf = [0; 4];
 		r.read_exact(&mut buf)?;
 		Ok(Self::from_be_bytes(buf))
 	}
+}
+impl<'x> PBSerialize for f64 {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		w.write_all(&self.to_be_bytes())
 	}
 }
-impl<'x> PBType<'x> for f64 {
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
+impl<'x> PBDeserialize<'x> for f64 {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
 		let mut buf = [0; 8];
 		r.read_exact(&mut buf)?;
 		Ok(Self::from_be_bytes(buf))
-	}
-	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
-		w.write_all(&self.to_be_bytes())
 	}
 }
 
-impl<'x, T: PBType<'x>> PBType<'x> for Vec<T> {
+impl<'x, T: PBSerialize> PBSerialize for Vec<T> {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		let len = self.len() as u64;
 		UInt(len).serialize(w)?;
@@ -359,20 +432,24 @@ impl<'x, T: PBType<'x>> PBType<'x> for Vec<T> {
 		}
 		Ok(())
 	}
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
-		let len = UInt::deserialize_stream(r)?.into();
+}
+impl<'x, T: PBDeserialize<'x>> PBDeserialize<'x> for Vec<T> {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
+		let len = UInt::deserialize_owned(r)?.into();
 		if len > MAX_ARRAY_LENGTH {
 			return Err(Error::other("Array length too large"));
 		}
 		let mut this = Vec::with_capacity(len);
 
 		for _ in 0..len {
-			this.push(T::deserialize_stream(r)?);
+			this.push(T::deserialize_owned(r)?);
 		}
 
 		Ok(this)
 	}
-	fn deserialize<'a: 'x>(slice: &mut &'a [u8]) -> io::Result<Self> where Self: Sized {
+	fn deserialize<'a: 'x>(slice: &mut &'a [u8]) -> io::Result<Self>
+		where Self: Sized
+	{
 		let len = UInt::deserialize(slice)?.into();
 		if len > MAX_ARRAY_LENGTH {
 			return Err(Error::other("Array length too large"));
@@ -391,15 +468,17 @@ impl<'x, T: PBType<'x>> PBType<'x> for Vec<T> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bytes<'a>(pub Cow<'a, [u8]>);
 
-impl<'x> PBType<'x> for Bytes<'x> {
+impl<'x> PBSerialize for Bytes<'x> {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		let len = self.0.len() as u64;
 		UInt(len).serialize(w)?;
 		w.write_all(&self.0)?;
 		Ok(())
 	}
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
-		let len = UInt::deserialize_stream(r)?.into();
+}
+impl<'x> PBDeserialize<'x> for Bytes<'x> {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
+		let len = UInt::deserialize_owned(r)?.into();
 		if len > MAX_BYTES_LENGTH {
 			return Err(Error::other("Bytes length too large"));
 		}
@@ -453,16 +532,19 @@ impl<'a> From<Cow<'a, [u8]>> for Bytes<'a> {
 }
 
 
-impl<'x> PBType<'x> for Cow<'x, str> {
+impl<'x> PBSerialize for Cow<'x, str> {
 	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		let len = self.len() as u64;
 		UInt(len).serialize(w)?;
 		w.write_all(self.as_bytes())?;
 		Ok(())
 	}
-
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> where Self: Sized {
-		Ok(String::deserialize_stream(r)?.into())
+}
+impl<'x> PBDeserialize<'x> for Cow<'x, str> {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self>
+		where Self: Sized
+	{
+		Ok(String::deserialize_owned(r)?.into())
 	}
 	fn deserialize<'a: 'x>(slice: &mut &'a [u8]) -> io::Result<Self> {
 		let len = UInt::deserialize(slice)?.into();
@@ -481,10 +563,17 @@ impl<'x> PBType<'x> for Cow<'x, str> {
 	}
 }
 
-// Legacy code
-impl<'x> PBType<'x> for String {
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> {
-		let len = UInt::deserialize_stream(r)?.into();
+impl<'x> PBSerialize for String {
+	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
+		let len = self.len() as u64;
+		UInt(len).serialize(w)?;
+		w.write_all(self.as_bytes())?;
+		Ok(())
+	}
+}
+impl<'x> PBDeserialize<'x> for String {
+	fn deserialize_owned<R: Read>(r: &mut R) -> io::Result<Self> {
+		let len = UInt::deserialize_owned(r)?.into();
 		if len > MAX_BYTES_LENGTH {
 			return Err(Error::other("String length too large"));
 		}
@@ -501,71 +590,11 @@ impl<'x> PBType<'x> for String {
 			io::Error::new(io::ErrorKind::InvalidData, e)
 		)?)
 	}
-	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
-		let len = self.len() as u64;
-		UInt(len).serialize(w)?;
-		w.write_all(self.as_bytes())?;
-		Ok(())
-	}
 }
 
-/// A trait that all individual commands implement. The enum of all commands *does not* implement this trait.
-pub trait PBCommandExt<'x> {
-	type Error<'a>: PBType<'a>;
-	type Return<'a>: PBType<'a>;
-
-	/// The ID of the command.
-	const ID: u32;
-	/// Whether the `Return` type is `Void`.
-	const IS_VOID: bool = false;
-
-	const ATTRIBUTES: &'static [(&'static str, Option<&'static str>)] = &[];
-	const REQUIRED_CAPABILITY: Option<&'static str> = None;
-
-	fn deserialize_return_stream<R: Read>(&self, r: &mut R) -> io::Result<Self::Return<'static>> {
-		Self::Return::deserialize_stream(r)
-	}
-	fn deserialize_return<'a>(slice: &mut &'a[u8]) -> io::Result<Self::Return<'a>> {
-		Self::Return::deserialize(slice)
-	}
-	fn deserialize_error_stream<R: Read>(&self, r: &mut R) -> io::Result<Self::Error<'static>> {
-		Self::Error::deserialize_stream(r)
-	}
-	fn deserialize_error<'a>(slice: &mut &'a[u8]) -> io::Result<Self::Error<'a>> {
-		Self::Error::deserialize(slice)
-	}
-
-	/// Does **not** read the command ID.  
-	/// If you need to read the command ID, use `CommandID::deserialize`
-	fn deserialize_stream<R: Read>(r: &mut R) -> io::Result<Self> where Self: Sized;
-	fn deserialize<'a: 'x>(slice: &mut &'a[u8]) -> io::Result<Self> where Self: Sized {
-		Self::deserialize_stream(slice)
-	}
-}
-
-/// A trait that all commands implement. The enum of all commands also implements this trait.
-pub trait PBCommand {
-	fn id(&self) -> u32;
-
-	/// Whether the `Return` type is `Void`
-	fn is_void(&self) -> bool { false }
-
-	fn attributes(&self) -> &'static [(&'static str, Option<&'static str>)] { &[] }
-	fn required_capability(&self) -> Option<&'static str> {
-		None
-	}
-
-	/// Does **not** write the command ID.
-	fn serialize_self<W: Write>(&self, w: &mut W) -> io::Result<()>;
-
-	/// Writes both the command ID and the argument body
-	fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
-		w.write_all(&self.id().to_be_bytes())?;
-		self.serialize_self(w)
-	}
-}
-
-impl<'x, K: PBType<'x> + std::hash::Hash + Eq, V: PBType<'x>> HashMapConvertible<K, V> for Map<K, V> {
+impl<'x, K, V> HashMapConvertible<K, V> for Map<K, V>
+	where K: PBType<'x> + std::hash::Hash + Eq, V: PBType<'x>
+{
 	fn to_map_allow_duplicates(self) -> (HashMap<K, V>, bool) {
 		let mut hm = HashMap::new();
 		let mut duplicates = false;
@@ -598,18 +627,22 @@ pub struct KeyPair<K, V> {
 	pub key: K,
 	pub value: V,
 }
-impl<'x, K: PBType<'x>, V: PBType<'x>> PBType<'x> for KeyPair<K, V> {
-	fn attributes() -> &'static [(&'static str, Option<&'static str>)] { &[
-		("@sealed", None),
-	] }
+impl<'x, K: PBType<'x>, V: PBType<'x>> PBSerialize for KeyPair<K, V> {
+	fn attributes(&self) -> &'static [(&'static str, Option<&'static str>)]
+		{ Self::ATTRIBUTES }
 	fn serialize<W: io::Write>(&self, w: &mut W) -> io::Result<()> {
 		self.key.serialize(w)?;
 		self.value.serialize(w)?;
 		Ok(())
 	}
-	fn deserialize_stream<R: io::Read>(r: &mut R) -> io::Result<Self> {
-		let field_key = K::deserialize_stream(r)?;
-		let field_value = V::deserialize_stream(r)?;
+}
+impl<'x, K: PBType<'x>, V: PBType<'x>> PBDeserialize<'x> for KeyPair<K, V> {
+	const ATTRIBUTES: &'static [(&'static str, Option<&'static str>)] = &[
+		("@sealed", None),
+	];
+	fn deserialize_owned<R: io::Read>(r: &mut R) -> io::Result<Self> {
+		let field_key = K::deserialize_owned(r)?;
+		let field_value = V::deserialize_owned(r)?;
 		Ok(Self {
 			key: field_key,
 			value: field_value,
@@ -625,7 +658,7 @@ impl<'x, K: PBType<'x>, V: PBType<'x>> PBType<'x> for KeyPair<K, V> {
 	}
 }
 
-impl<'x> PBType<'x> for bool {
+impl<'x> PBSerialize for bool {
 	fn serialize<W: io::Write>(&self, w: &mut W) -> io::Result<()> {
 		if *self {
 			0u8.serialize(w)?;
@@ -634,13 +667,17 @@ impl<'x> PBType<'x> for bool {
 		}
 		Ok(())
 	}
-	fn deserialize_stream<R: io::Read>(r: &mut R) -> io::Result<Self> {
-		let discriminant = u8::deserialize_stream(r)?;
+}
+impl<'x> PBDeserialize<'x> for bool {
+	fn deserialize_owned<R: io::Read>(r: &mut R) -> io::Result<Self> {
+		let discriminant = u8::deserialize_owned(r)?;
 		Ok(match discriminant {
 			0 => true,
 			1 => false,
 			_ => {
-				Err(io::Error::other("Unknown enum discriminant; enum is not extensible"))?
+				Err(
+					io::Error::other("Unknown enum discriminant; enum is not extensible")
+				)?
 			}
 		})
 	}
@@ -650,12 +687,14 @@ impl<'x> PBType<'x> for bool {
 			0 => true,
 			1 => false,
 			_ => {
-				Err(io::Error::other("Unknown enum discriminant; enum is not extensible"))?
+				Err(
+					io::Error::other("Unknown enum discriminant; enum is not extensible")
+				)?
 			}
 		})
 	}
 }
-impl<'x, T: PBType<'x>> PBType<'x> for Option<T> {
+impl<'x, T: PBType<'x>> PBSerialize for Option<T> {
 	fn serialize<W: io::Write>(&self, w: &mut W) -> io::Result<()> {
 		match self {
 			None => {
@@ -668,17 +707,21 @@ impl<'x, T: PBType<'x>> PBType<'x> for Option<T> {
 		}
 		Ok(())
 	}
-	fn deserialize_stream<R: io::Read>(r: &mut R) -> io::Result<Self> {
-		let discriminant = u8::deserialize_stream(r)?;
+}
+impl<'x, T: PBType<'x>> PBDeserialize<'x> for Option<T> {
+	fn deserialize_owned<R: io::Read>(r: &mut R) -> io::Result<Self> {
+		let discriminant = u8::deserialize_owned(r)?;
 		Ok(match discriminant {
 			0 => {
 				None
 			}
 			1 => {
-				Some(T::deserialize_stream(r)?)
+				Some(T::deserialize_owned(r)?)
 			}
 			_ => {
-				Err(io::Error::other("Unknown enum discriminant; enum is not extensible"))?
+				Err(
+					io::Error::other("Unknown enum discriminant; enum is not extensible")
+				)?
 			}
 		})
 	}
@@ -692,7 +735,9 @@ impl<'x, T: PBType<'x>> PBType<'x> for Option<T> {
 				Some(T::deserialize(r)?)
 			}
 			_ => {
-				Err(io::Error::other("Unknown enum discriminant; enum is not extensible"))?
+				Err(
+					io::Error::other("Unknown enum discriminant; enum is not extensible")
+				)?
 			}
 		})
 	}
@@ -701,7 +746,10 @@ impl<'x, T: PBType<'x>> PBType<'x> for Option<T> {
 // TODO: write more tests
 #[cfg(test)]
 mod libtest {
-	use crate::{PBType, UInt, KeyPair, tokio::AsyncPBType};
+	use crate::{
+		PBSerialize, PBDeserialize, UInt, KeyPair,
+		tokio::{AsyncPBDeserialize, AsyncPBSerialize}
+	};
 	use std::borrow::Cow;
 
 	const TEST_UINTS: &[u64] = &[
@@ -718,7 +766,7 @@ mod libtest {
 			let mut v = vec![];
 			UInt(*n).serialize(&mut v).unwrap();
 			let r = &mut &v[..];
-			let same = UInt::deserialize_stream(r).unwrap();
+			let same = UInt::deserialize_owned(r).unwrap();
 			assert_eq!(same.0, *n);
 			assert_eq!(*r, &[]);
 		}
@@ -764,7 +812,7 @@ mod libtest {
 		}
 		let mut slice: &[u8] = &v;
 		for s in TEST_STRINGS {
-			let res: Cow<'_, str> = Cow::deserialize_stream(&mut slice).unwrap();
+			let res: Cow<'_, str> = Cow::deserialize_owned(&mut slice).unwrap();
 			assert_eq!(res.as_ref(), *s);
 		}
 	}
@@ -775,7 +823,7 @@ mod libtest {
 		let thing = KeyPair { key: Cow::from("Hello, world!"), value: Cow::from("Hello, world!"), };
 		thing.serialize(&mut vec).unwrap();
 		let r = &mut &vec[..];
-		let other = KeyPair::<Cow<'_, str>, Cow<'_, str>>::deserialize_stream(r).unwrap();
+		let other = KeyPair::<Cow<'_, str>, Cow<'_, str>>::deserialize_owned(r).unwrap();
 		assert_eq!(thing, other, "values don't match");
 		assert_eq!(*r, &[], "cleanup");
 	}
@@ -805,7 +853,7 @@ mod libtest {
 		let thing = true;
 		thing.serialize(&mut vec).unwrap();
 		let r = &mut &vec[..];
-		let other = bool::deserialize_stream(r).unwrap();
+		let other = bool::deserialize_owned(r).unwrap();
 		assert_eq!(thing, other, "values don't match");
 		assert_eq!(*r, &[], "cleanup");
 	}
@@ -835,7 +883,7 @@ mod libtest {
 		let thing = Option::<Cow<'_, str>>::None;
 		thing.serialize(&mut vec).unwrap();
 		let r = &mut &vec[..];
-		let other = Option::<Cow<'_, str>>::deserialize_stream(r).unwrap();
+		let other = Option::<Cow<'_, str>>::deserialize_owned(r).unwrap();
 		assert_eq!(thing, other, "values don't match");
 		assert_eq!(*r, &[], "cleanup");
 	}

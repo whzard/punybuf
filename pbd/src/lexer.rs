@@ -108,7 +108,7 @@ impl Span {
 	}
 }
 
-/// The output of `PunybufLexer`.
+/// The output of [`Lexer`].
 ///
 /// This is intentionally opaque as modifying tokens
 /// directly is not stable and currently unsupported.
