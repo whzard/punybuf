@@ -143,7 +143,7 @@ fn main() -> Result<(), ()> {
 						buf.push_str(&s);
 						buf
 					});
-				format!("{BOLD}{RED}fail:{NORMAL}\n{error}\n--- end of output ---\n")
+				format!("{BOLD}{RED}fail:{NORMAL}\n{error}\n--- end of output for {test_name} ---\n")
 			},
 			TestResult::Skipped => format!("{GRAY}skipped{NORMAL}"),
 			TestResult::Warning(warning) => format!("{BOLD}{YELLOW}warning:{NORMAL}\n{warning}\n")
