@@ -565,19 +565,26 @@ impl<'def> RustCodegen<'def> {
 		let lf = self.lifetime;
 		self.lifetime = "'a";
 		appendf!(self, "impl PBProtocol for Protocol {{\n");
-		appendf!(self, "    type Commands<'a> = Command{};\n", self.gen_lifetime_generics_if(needs_lifetime));
-		appendf!(self, "    type Returns<'a> = CommandReturn{};\n", self.gen_lifetime_generics_if(ret_needs_lifetime));
+		appendf!(self, "    type Commands<'a> = Command{};\n",
+			self.gen_lifetime_generics_if(needs_lifetime));
+		appendf!(self, "    type Returns<'a> = CommandReturn{};\n",
+			self.gen_lifetime_generics_if(ret_needs_lifetime));
 		appendf!(self, "    type Errors<'a> = CommandError<'a>;\n");
 		appendf!(self, "}}\n\n"); // impl PBProtocol
 		self.lifetime = lf;
 
+		let lf = self.lifetime;
+		self.lifetime = "'static";
 		if self.use_tokio {
 			appendf!(self, "impl AsyncPBProtocol for Protocol {{\n");
-			appendf!(self, "    type AsyncCommands = Command<'static>;\n");
-			appendf!(self, "    type AsyncReturns = CommandReturn<'static>;\n");
+			appendf!(self, "    type AsyncCommands = Command{};\n",
+				self.gen_lifetime_generics_if(needs_lifetime));
+			appendf!(self, "    type AsyncReturns = CommandReturn{};\n",
+				self.gen_lifetime_generics_if(needs_lifetime));
 			appendf!(self, "    type AsyncErrors = CommandError<'static>;\n");
 			appendf!(self, "}}\n\n"); // impl AsyncPBProtocol
 		}
+		self.lifetime = lf;
 
 		appendf!(self, "/// This enum contains all possible commands in the RPC definition.\n");
 		self.gen_derive();
