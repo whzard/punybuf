@@ -82,6 +82,27 @@ impl PBTypeRef {
 		// This is only available in the public API post-resolution
 		!self.is_global
 	}
+	/// Whether this reference is circular, like
+	/// ```pbd
+	/// Node = [
+	///   Parent: ParentNode,  # <-- here
+	///   Leaf: String
+	/// ]
+	/// Parent = {
+	///   one: Node  # <-- here
+	///   two: Node  # <-- here
+	/// }
+	/// ```
+	/// 
+	/// Note that if the goal is to resolve the circular references via
+	/// indirection, then pbd currently marks all circular references, even if,
+	/// as in the above example, marking just one of the references would
+	/// be sufficient. This only has a minor impact on the performance of
+	/// (de)serialization.
+	pub fn is_circular(&self) -> bool {
+		// This is only available in the public API post-resolution
+		self.is_circular
+	}
 }
 
 #[derive(Debug, Clone)]
