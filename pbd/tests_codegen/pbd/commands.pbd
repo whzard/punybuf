@@ -30,7 +30,11 @@ returningMap: {
 	two: U64
 } -> Map<String, String> ![YetAnother]
 
-returningMap2: {
+returningSameMap: {
+	one: String
+} -> Map<String, String> ![YetAnother]
+
+returningOtherMap: {
 	one: U64
 	two: U64
 } -> Map<U64, String> ![YetAnother]
