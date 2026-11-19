@@ -1,0 +1,36 @@
+include common
+
+# comment
+#[ documentation ]
+SomeStruct = {
+	field_1: String
+	field_2: Bytes
+	flag_field: U64.{
+		flag?
+		flag_with_value?: String
+	}
+}
+
+voidCommand: {
+	argument: SomeStruct
+	and: String
+} -> Void
+
+someCommand: {
+	argument: SomeStruct
+	and: String
+} -> Bytes ![SomeError]
+
+otherCommand: {
+	single_argument: String
+} -> Bytes ![AnotherError]
+
+returningMap: {
+	one: String
+	two: U64
+} -> Map<String, String> ![YetAnother]
+
+returningMap2: {
+	one: U64
+	two: U64
+} -> Map<U64, String> ![YetAnother]

@@ -1,5 +1,5 @@
 use crc::{Crc, CRC_32_CKSUM};
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 use crate::{
 	errors::{PunybufError, parser_err, pb_err},
@@ -12,6 +12,11 @@ use crate::{
 
 pub(crate) const PB_CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_CKSUM);
 
+/// A reference to another Punybuf type.
+///
+/// Note that the implementations of the [`Eq`] and [`Hash`] traits do not
+/// take into account the spans. In other words, two references are considered
+/// equal regardless of where they have been defined in the code.
 #[derive(Debug, Clone)]
 #[allow(unused)]
 pub struct PBTypeRef {
@@ -36,6 +41,34 @@ pub struct PBTypeRef {
 	/// 
 	/// (this is only valid post-resolution)
 	pub(crate) is_global: bool,
+}
+
+impl PartialEq for PBTypeRef {
+	/// Note that this implementation does not check whether the references
+	/// appear in the same position (as in, it does not check for span equality)
+	fn eq(&self, other: &Self) -> bool {
+		self.reference == other.reference &&
+		self.generics == other.generics &&
+		self.resolved_layer == other.resolved_layer &&
+		self.is_highest_layer == other.is_highest_layer &&
+		self.is_circular == other.is_circular &&
+		self.is_global == other.is_global
+	}
+}
+
+impl Eq for PBTypeRef {}
+
+impl Hash for PBTypeRef {
+	/// Note that this implementation does not take into account
+	/// the reference positions (as in, the spans)
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.reference.hash(state);
+		self.generics.hash(state);
+		self.resolved_layer.hash(state);
+		self.is_highest_layer.hash(state);
+		self.is_circular.hash(state);
+		self.is_global.hash(state);
+	}
 }
 
 #[allow(dead_code)]

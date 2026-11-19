@@ -30,7 +30,7 @@ pub(crate) enum TokenData {
 	Attribute(String, Option<String>),
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Position in a file
 pub struct Loc {
 	/// The 0-indexed row
@@ -53,7 +53,7 @@ impl Loc {
 }
 
 /// A range in the source code file
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Span {
 	pub(crate) loc_start: Loc,
 	pub(crate) loc_end: Loc,

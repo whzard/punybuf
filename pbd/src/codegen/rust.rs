@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{errors::{BOLD, NORMAL, YELLOW}, flattener::{
 	PBCommandArg, PBCommandDef, PBEnumVariant, PBField,
@@ -321,16 +321,16 @@ impl<'def> RustCodegen<'def> {
 				"Boolean" => return "bool".to_string(),
 				"Bytes" => {
 					return if turbofish {
-						"Bytes::<'x>".to_string()
+						format!("Bytes::<{}>", self.lifetime)
 					} else {
-						"Bytes<'x>".to_string()
+						format!("Bytes<{}>", self.lifetime)
 					};
 				}
 				"String" => {
 					return if turbofish {
-						"Cow::<'x, str>".to_string()
+						format!("Cow::<{}, str>", self.lifetime)
 					} else {
-						"Cow<'x, str>".to_string()
+						format!("Cow<{}, str>", self.lifetime)
 					};
 				}
 				_ => {}
@@ -402,7 +402,7 @@ impl<'def> RustCodegen<'def> {
 		if cmd.is_highest_layer && !needs_lifetime {
 			cmd.name.clone()
 		} else if cmd.is_highest_layer {
-			format!("{}<'x>", cmd.name)
+			format!("{}<{}>", cmd.name, self.lifetime)
 		} else {
 			format!("{}Layer{}{}", cmd.name, cmd.layer, self.gen_lifetime_generics_if(needs_lifetime))
 		}
@@ -920,15 +920,30 @@ impl<'def> RustCodegen<'def> {
 		}
 
 		// From traits:
+
+		// Multiple command returns may have the same exact type.
+		// We need to avoid duplicate implementations.
+		let mut known_command_returns = HashMap::<&PBTypeRef, Vec<&PBCommandDef>>::new();
 		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
 				continue;
 			}
+			known_command_returns
+				.entry(&cmd.ret)
+				.and_modify(|e| {
+					e.push(cmd);
+				})
+				.or_insert_with(|| {
+					vec![cmd]
+				})
+			;
+		}
+		for (ret, cmds) in known_command_returns {
 			appendf!(self,
 				"impl{} TryFrom<CommandReturn{}> for {} {{\n",
 				self.gen_lifetime_generics_if(ret_needs_lifetime),
 				self.gen_lifetime_generics_if(ret_needs_lifetime),
-				self.gen_reference(&cmd.ret, false)
+				self.gen_reference(&ret, false)
 			);
 			appendf!(self,
 				"    /// The return value contained in the enum is not from the correct command.\n"
@@ -939,28 +954,30 @@ impl<'def> RustCodegen<'def> {
 				self.gen_lifetime_generics_if(ret_needs_lifetime)
 			);
 			appendf!(self, "        match value {{\n");
-			appendf!(self,
-				"            CommandReturn::{}(ret) => Ok(ret),\n",
-				self.get_command_name(cmd)
-			);
+			for cmd in cmds {
+				appendf!(self,
+					"            CommandReturn::{}(ret) => Ok(ret),\n",
+					self.get_command_name(cmd)
+				);
+			}
 			appendf!(self, "            _ => Err(())\n");
 			appendf!(self, "        }}\n"); // match
 			appendf!(self, "    }}\n"); // fn try_from
 			appendf!(self, "}}\n"); // impl TryFrom<CommandReturn>
 
-			appendf!(self,
-				"impl{} From<{}> for CommandReturn{} {{\n",
-				self.gen_lifetime_generics_if(ret_needs_lifetime),
-				self.gen_reference(&cmd.ret, false),
-				self.gen_lifetime_generics_if(ret_needs_lifetime)
-			);
-			appendf!(self,
-				"    fn from(value: {}) -> Self {{\n",
-				self.gen_reference(&cmd.ret, false)
-			);
-			appendf!(self, "        Self::{}(value)\n", self.get_command_name(cmd));
-			appendf!(self, "    }}\n"); // fn from
-			appendf!(self, "}}\n"); // impl From<{}>
+			// appendf!(self,
+			// 	"impl{} From<{}> for CommandReturn{} {{\n",
+			// 	self.gen_lifetime_generics_if(ret_needs_lifetime),
+			// 	self.gen_reference(&cmd.ret, false),
+			// 	self.gen_lifetime_generics_if(ret_needs_lifetime)
+			// );
+			// appendf!(self,
+			// 	"    fn from(value: {}) -> Self {{\n",
+			// 	self.gen_reference(&cmd.ret, false)
+			// );
+			// appendf!(self, "        Self::{}(value)\n", self.get_command_name(cmd));
+			// appendf!(self, "    }}\n"); // fn from
+			// appendf!(self, "}}\n"); // impl From<{}>
 		}
 
 		appendf!(self, "\n");
