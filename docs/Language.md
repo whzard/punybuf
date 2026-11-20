@@ -458,4 +458,4 @@ coolCommand_LAYER2: {
 
 This, although saves some headache, is still really annoying, since in your actual code, you'll need to handle all three versions of the same command. There's simply no way around it if you want to break binary compatibility. So, this is why you may consider using [extensions](#extensions) for evolving your protocol.
 
-**TODO: capabilities**
+**TODO:1.0: capabilities**

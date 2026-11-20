@@ -141,7 +141,7 @@ pub trait HashMapConvertible<K, V>: Sized {
 	}
 
 	/// Build this type from a `HashMap`
-	// TODO: update this API to use `impl Iterator<Item = (K, V)>`
+	// TODO:1.0: update this API to use `impl Iterator<Item = (K, V)>`
 	fn from_map(map: HashMap<K, V>) -> Self;
 }
 

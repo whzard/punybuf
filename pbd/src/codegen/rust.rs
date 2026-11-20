@@ -1347,7 +1347,7 @@ impl<'def> RustCodegen<'def> {
 						// to avoid the lifetime issues (because we drop
 						// `_extension_bytes` at the end of the function)
 						// 
-						// TODO: Don't use Bytes, just read the UInt and
+						// TODO:1.0: Don't use Bytes, just read the UInt and
 						// use `read_exact` or `[..len]` to read
 						appendf!(self,
 							"            Some({}::deserialize_owned(_extension_reader)?)\n",

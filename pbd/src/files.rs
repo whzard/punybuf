@@ -83,7 +83,7 @@ impl IncludeHandler for FileIncludeHandler {
 				]
 			};
 
-			// TODO: add a mechanism to output warnings some other way
+			// TODO:1.0: add a mechanism to output warnings some other way
 			eprint!("{YELLOW}{BOLD}warning:{NORMAL} \"{rp_string}\" included multiple times - ignored\n");
 			for (i, info) in expl.iter().enumerate() {
 				if i != 0 { eprint!("\n") }

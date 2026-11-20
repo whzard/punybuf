@@ -447,7 +447,7 @@ fn ref_from_json(obj_ref: &mut JsonValue) -> Result<PBTypeRef, String> {
 		resolved_layer: Some(layer),
 		is_highest_layer,
 		is_circular,
-		// TODO: currently not included in json
+		// TODO:1.0: currently not included in json
 		is_global: true,
 	})
 }

@@ -970,7 +970,7 @@ impl<'parser> Parser<'parser> {
 			}
 		};
 
-		// TODO?: allow `=` before inline decls to make it greppable
+		// TODO:1.0: allow `=` before inline decls to make it greppable
 		match &peekable.peek() {
 			Some(Token { data, span }) => {
 				match data {
