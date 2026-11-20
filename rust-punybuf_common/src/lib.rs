@@ -38,7 +38,8 @@ pub mod prelude {
 		Done, Map, KeyPair, Void,
 		commands::{
 			PBCommand, PBCommandDeserialize, PBCommandSerialize,
-			PBProtocol, ProtocolCommands, ProtocolErrors, ProtocolReturns
+			PBProtocol, ProtocolCommands, ProtocolErrors, ProtocolReturns,
+			MatchID
 		}
 	};
 }
@@ -51,6 +52,8 @@ pub mod supported_versions {
 	pub const PRE_MAJOR_13: usize = 13;
 	/// A supported minor version of this crate
 	pub const MINOR_0: usize = 0;
+	/// A supported minor version of this crate
+	pub const MINOR_1: usize = 1;
 }
 
 macro_rules! buffer_too_small {

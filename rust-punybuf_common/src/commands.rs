@@ -142,6 +142,15 @@ pub trait ProtocolReturns<'x>: PBSerialize {
 	{
 		Self::deserialize_owned(id, slice)
 	}
+
+	/// Get the ID of the command that this return is for
+	///
+	/// Note: before release, this trait has a default implementation
+	/// that always returns `0`.
+	// TODO:1.0: make this required
+	fn id(&self) -> u32 {
+		0
+	}
 }
 
 /// An enum of all supported command error values in a protocol.
@@ -155,5 +164,44 @@ pub trait ProtocolErrors<'x>: PBSerialize {
 		where Self: Sized
 	{
 		Self::deserialize_owned(id, slice)
+	}
+	
+	/// Get the ID of the command that this error is for
+	///
+	/// Note: before release, this trait has a default implementation
+	/// that always returns `0`.
+	// TODO:1.0: make this required
+	fn id(&self) -> u32 {
+		0
+	}
+}
+
+/// A trait to check whether the passed command ID matches the
+/// retained one.
+///
+/// For commands & errors, this just checks for equality of the inner ID
+/// parameter and the passed ID. For return values, since multiple commands
+/// may return the same thing, this checks if the command with the passed `id`
+/// accepts returns of that type (as in, there might be more than one `id` that
+/// fits).
+///
+/// Note that this trait has a blanket implementation for
+/// [`PBProtocol::Commands`], but not other associated types since the compiler
+/// cannot guarantee that these types don't overlap.
+pub trait MatchID<Protocol: PBProtocol> {
+	/// Check if this type can be used with id `id`.
+	///
+	/// This is a simple equality check for commands & errors, but for return
+	/// values it checks if the command with id `id` returns this value.
+	fn match_id(&self, id: u32) -> bool;
+}
+
+// This trait is only automatically implemented for P::Commands because
+// otherwise we cannot guarantee that P::Commands, P::Errors, P::Returns
+// are different types. This looks a little weird since one part is implemented
+// here and the other in the generated definition.
+impl<'any, P: PBProtocol> MatchID<P> for P::Commands<'any> {
+	fn match_id(&self, id: u32) -> bool {
+		self.id() == id
 	}
 }

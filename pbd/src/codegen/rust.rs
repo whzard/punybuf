@@ -218,6 +218,21 @@ impl<'def> RustCodegen<'def> {
 		if refr.reference == "Void" || !refr.is_global {
 			return false
 		}
+
+		let mut path = HashSet::new();
+		self.needs_lifetime_with_context(
+			&refr.reference,
+			refr.resolved_layer.expect(
+				&format!("bad state: layer of {} not resolved", &refr.reference)
+			),
+			&refr.generics, &mut path
+		)
+	}
+	/// Ignores whether any generics need the lifetime
+	fn needs_lifetime_standalone_ref(&self, refr: &PBTypeRef) -> bool {
+		if refr.reference == "Void" || !refr.is_global {
+			return false
+		}
 		// We are deliberately ignoring the generic arguments
 		// of our reference because lifetime argument would
 		// appear inside those arguments if we needed them
@@ -359,7 +374,8 @@ impl<'def> RustCodegen<'def> {
 				result.insert_str(0, "Box<");
 			}
 		}
-		let needs_lifetime = self.needs_lifetime_ref(refr);
+		// Generics get their own lifetime
+		let needs_lifetime = self.needs_lifetime_standalone_ref(refr);
 		if refr.generics.is_empty() && !needs_lifetime {
 			if should_box!() {
 				result.push('>');
@@ -580,7 +596,7 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, "    type AsyncCommands = Command{};\n",
 				self.gen_lifetime_generics_if(needs_lifetime));
 			appendf!(self, "    type AsyncReturns = CommandReturn{};\n",
-				self.gen_lifetime_generics_if(needs_lifetime));
+				self.gen_lifetime_generics_if(ret_needs_lifetime));
 			appendf!(self, "    type AsyncErrors = CommandError<'static>;\n");
 			appendf!(self, "}}\n\n"); // impl AsyncPBProtocol
 		}
@@ -899,12 +915,24 @@ impl<'def> RustCodegen<'def> {
 		appendf!(self, "\n");
 		appendf!(self, "        }})\n"); // match
 		appendf!(self, "    }}\n"); // fn deserialize
+
+		appendf!(self, "    fn id(&self) -> u32 {{\n");
+		appendf!(self, "        match self {{\n");
+		for cmd in &self.def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self,
+				"            Self::{}(..) => {},\n",
+				self.get_command_name(cmd), cmd.command_id
+			);
+		}
+		appendf!(self, "        }}\n"); // match
+		appendf!(self, "    }}\n"); // fn id
 		appendf!(self, "}}\n"); // impl ProtocolReturns
 
 		if self.use_tokio {
 			appendf!(self, "impl{} AsyncProtocolReturns for CommandReturn{} {{\n",
-				// We always need the lifetime for the impl block, since
-				// the `deserialize` method references them
 				self.gen_lifetime_generics_if(ret_needs_lifetime),
 				self.gen_lifetime_generics_if(ret_needs_lifetime)
 			);
@@ -925,6 +953,14 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, "    }}\n"); // fn deserialize_async
 			appendf!(self, "}}\n"); // impl AsyncProtocolReturns
 		}
+
+		appendf!(self, "impl{} MatchID<Protocol> for CommandReturn{} {{\n",
+			self.gen_lifetime_generics_if(ret_needs_lifetime),
+			self.gen_lifetime_generics_if(ret_needs_lifetime));
+		appendf!(self, "    fn match_id(&self, id: u32) -> bool {{\n");
+		appendf!(self, "        self.id() == id\n"); // fn match_id
+		appendf!(self, "    }}\n"); // fn match_id
+		appendf!(self, "}}\n"); // impl MatchID
 
 		// From traits:
 
@@ -961,7 +997,7 @@ impl<'def> RustCodegen<'def> {
 				self.gen_lifetime_generics_if(ret_needs_lifetime)
 			);
 			appendf!(self, "        match value {{\n");
-			for cmd in cmds {
+			for cmd in &cmds {
 				appendf!(self,
 					"            CommandReturn::{}(ret) => Ok(ret),\n",
 					self.get_command_name(cmd)
@@ -972,19 +1008,19 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, "    }}\n"); // fn try_from
 			appendf!(self, "}}\n"); // impl TryFrom<CommandReturn>
 
-			// appendf!(self,
-			// 	"impl{} From<{}> for CommandReturn{} {{\n",
-			// 	self.gen_lifetime_generics_if(ret_needs_lifetime),
-			// 	self.gen_reference(&cmd.ret, false),
-			// 	self.gen_lifetime_generics_if(ret_needs_lifetime)
-			// );
-			// appendf!(self,
-			// 	"    fn from(value: {}) -> Self {{\n",
-			// 	self.gen_reference(&cmd.ret, false)
-			// );
-			// appendf!(self, "        Self::{}(value)\n", self.get_command_name(cmd));
-			// appendf!(self, "    }}\n"); // fn from
-			// appendf!(self, "}}\n"); // impl From<{}>
+			appendf!(self, "impl{} MatchID<Protocol> for {} {{\n",
+				self.gen_lifetime_generics_if(self.needs_lifetime_ref(&ret)),
+				self.gen_reference(&ret, false));
+			appendf!(self, "    fn match_id(&self, id: u32) -> bool {{\n");
+			appendf!(self, "        match id {{\n");
+			for cmd in &cmds {
+				appendf!(self, "            {} => true,\n",
+					cmd.command_id);
+			}
+			appendf!(self, "            _ => false\n");
+			appendf!(self, "        }}\n"); // match
+			appendf!(self, "    }}\n"); // fn match_id
+			appendf!(self, "}}\n"); // impl MatchID
 		}
 
 		appendf!(self, "\n");
@@ -1081,6 +1117,20 @@ impl<'def> RustCodegen<'def> {
 		appendf!(self, "\n");
 		appendf!(self, "        }})\n"); // match
 		appendf!(self, "    }}\n"); // fn deserialize
+
+		appendf!(self, "    fn id(&self) -> u32 {{\n");
+		appendf!(self, "        match self {{\n");
+		for cmd in &self.def.commands {
+			if cmd.attrs.contains_key("@rust:ignore") {
+				continue;
+			}
+			appendf!(self,
+				"            Self::{}(..) => {},\n",
+				self.get_command_name(cmd), cmd.command_id
+			);
+		}
+		appendf!(self, "        }}\n"); // match
+		appendf!(self, "    }}\n"); // fn id
 		appendf!(self, "}}\n"); // impl ProtocolErrors
 
 		if self.use_tokio {
@@ -1106,6 +1156,14 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, "}}\n"); // impl AsyncProtocolErrors
 		}
 
+		appendf!(self, "impl{} MatchID<Protocol> for CommandError{} {{\n",
+			self.gen_lifetime_generics_if(true),
+			self.gen_lifetime_generics_if(true));
+		appendf!(self, "    fn match_id(&self, id: u32) -> bool {{\n");
+		appendf!(self, "        self.id() == id\n"); // fn match_id
+		appendf!(self, "    }}\n"); // fn match_id
+		appendf!(self, "}}\n"); // impl MatchID
+
 		// From traits:
 		for cmd in &self.def.commands {
 			if cmd.attrs.contains_key("@rust:ignore") {
@@ -1123,7 +1181,7 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, "    type Error = ();\n\n");
 			appendf!(self,
 				"    fn try_from(value: CommandError{}) -> Result<Self, Self::Error> {{\n",
-				self.gen_lifetime_generics_if(ret_needs_lifetime)
+				self.gen_lifetime_generics_if(true)
 			);
 			appendf!(self, "        match value {{\n");
 			appendf!(self,
@@ -1137,9 +1195,9 @@ impl<'def> RustCodegen<'def> {
 
 			appendf!(self,
 				"impl{} From<{}> for CommandError{} {{\n",
-				self.gen_lifetime_generics_if(ret_needs_lifetime),
+				self.gen_lifetime_generics_if(true),
 				self.gen_command_err(cmd),
-				self.gen_lifetime_generics_if(ret_needs_lifetime)
+				self.gen_lifetime_generics_if(true)
 			);
 			appendf!(self,
 				"    fn from(value: {}) -> Self {{\n",
@@ -1148,6 +1206,14 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, "        Self::{}(value)\n", self.get_command_name(cmd));
 			appendf!(self, "    }}\n"); // fn from
 			appendf!(self, "}}\n"); // impl From<{}>
+
+			appendf!(self, "impl{} MatchID<Protocol> for {} {{\n",
+				self.gen_lifetime_generics_if(true),
+				self.gen_command_err(&cmd));
+			appendf!(self, "    fn match_id(&self, id: u32) -> bool {{\n");
+			appendf!(self, "        id == {}\n", cmd.command_id);
+			appendf!(self, "    }}\n"); // fn match_id
+			appendf!(self, "}}\n"); // impl MatchID
 		}
 		appendf!(self, "\n");
 	}
@@ -1910,7 +1976,7 @@ impl<'def> RustCodegen<'def> {
 			appendf!(self, "#[allow(unused)]\n");
 			appendf!(self, "use punybuf_common::supported_versions::PRE_MAJOR_13;\n");
 			appendf!(self, "#[allow(unused)]\n");
-			appendf!(self, "use punybuf_common::supported_versions::MINOR_0;\n");
+			appendf!(self, "use punybuf_common::supported_versions::MINOR_1;\n");
 		}
 
 		appendf!(self, "\n");

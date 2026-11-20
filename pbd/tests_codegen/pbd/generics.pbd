@@ -25,3 +25,17 @@ TakeEnumThing = {
 	string_thing: EnumThing<String>
 	byte_thing: EnumThing<Bytes>
 }
+
+Opaque<T> = {
+	inner: T
+}
+
+OpaqueWithArray = {
+	# String used here so that Rust will have to use
+	# a lifetime
+	opaque: Opaque<Array<String>>
+}
+
+commandUsingOpaque: {
+	opaque: Opaque<String>
+} -> Void

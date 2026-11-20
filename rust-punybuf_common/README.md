@@ -17,6 +17,12 @@ Punybuf makes heavy use of [`std::borrow::Cow`] to support both zero-copy and ow
 ## Commands
 The `pbd` tool generates types and traits for the types specified in the definition. It generates one Rust type per Punybuf type and two types per command, one for the argument, and one for the error type.
 
-The `pbd` tool also generates an enum containing all supported commands in the protocol. This enum implements [`commands::PBProtocol`] & [`commands::PBCommandSerialize`] (because it's an interface trait), but not [`commands::PBCommandDeserialize`], since the sematics are different and we need to also read the command ID to deserialize it. This enum also contains references to [`commands::ProtocolErrors`] & [`commands::ProtocolReturns`], two more enums containing all possible error or return values per each command. Moreover, the generated definitions contain [`From`] and [`TryFrom`] implementations to convert between enums and concrete types.
+The `pbd` tool also generates an unconstructable type implementing the [`commands::PBProtocol`] trait.
+
+Its [`commands::PBProtocol::Commands`] is an enum of all possible commands in the protocol, that implements [`commands::ProtocolCommands`] (& [`commands::PBCommandSerialize`] because it's an interface trait, but not [`commands::PBCommandDeserialize`], since the sematics are different and we need to also read the command ID to deserialize it).
+
+The protocol type has [`commands::PBProtocol::Errors`] (impl [`commands::ProtocolErrors`]) and [`commands::PBProtocol::Returns`] (impls [`commands::ProtocolReturns`]), two more enums containing all possible error or return values per each command. Moreover, some of the generated definitions contain [`From`] and [`TryFrom`] implementations to convert between enums and concrete types.
+
+Another notable trait is [`commands::MatchID`], which allows for checking whether a type can be used with a command id (as a return value or as an error value). *Unfortunately, there isn't a way for this check to be made during compilation time.*
 
 Utilities implementing an RPC system can take advantage of these traits to create generic strongly typed functions.
